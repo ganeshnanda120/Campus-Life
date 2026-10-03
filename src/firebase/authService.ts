@@ -22,6 +22,20 @@ import type { UserRecord, UserPermission, StudentCategory } from '../types';
 // Pre-seeded authorized accounts for testing all scenarios required by Section 30
 export const INITIAL_DEMO_USERS: UserRecord[] = [
   {
+    uid: '08uaC8idQOa0H05njEK8WC8Jakn1',
+    email: 'ganeshnanda4500@gmail.com',
+    role: 'MAIN_ADMIN',
+    name: 'Ganesh Nanda',
+    department: 'University Administration',
+    designation: 'Chief Administrative Officer',
+    permissions: [] as UserPermission[],
+    isActivated: true,
+    isActive: true,
+    emailVerified: true,
+    createdAt: '2026-10-03T14:28:00.000Z',
+    updatedAt: '2026-10-03T14:28:00.000Z',
+  },
+  {
     uid: 'admin_uid_001',
     email: 'admin@campuslife.edu',
     role: 'MAIN_ADMIN',
@@ -176,7 +190,18 @@ export function getLocalUsers(): UserRecord[] {
   try {
     const raw = safeStorage.getItem('campus_life_authorized_users');
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw) as UserRecord[];
+      let changed = false;
+      for (const demoUser of INITIAL_DEMO_USERS) {
+        if (!parsed.some((u) => u.email.toLowerCase() === demoUser.email.toLowerCase())) {
+          parsed.unshift(demoUser);
+          changed = true;
+        }
+      }
+      if (changed) {
+        safeStorage.setItem('campus_life_authorized_users', JSON.stringify(parsed));
+      }
+      return parsed;
     }
   } catch {
     // ignore
