@@ -11,6 +11,9 @@ import {
 import { db, isFirebaseConfigured } from '../firebase/config';
 import { getLocalUsers, saveLocalUsers } from '../firebase/authService';
 import { auditService } from './auditService';
+import { requestService } from './requestService';
+import { complaintService } from './complaintService';
+import { gatePassService } from './gatePassService';
 import type {
   UserRecord,
   UserRole,
@@ -631,10 +634,10 @@ class UserService {
       }
     }
 
-    // Pending counts from operational collections if available
-    let pendingRequests = 12;
-    let activeComplaints = 8;
-    let pendingGatePasses = 5;
+    // Pending counts strictly from real operational collections (0 default, strictly NO dummy data)
+    let pendingRequests = 0;
+    let activeComplaints = 0;
+    let pendingGatePasses = 0;
 
     if (isFirebaseConfigured && db) {
       try {
@@ -643,7 +646,7 @@ class UserService {
         );
         pendingRequests = reqSnapshot.size;
       } catch {
-        // use baseline fallback
+        // Fallback to local service
       }
 
       try {
@@ -652,7 +655,7 @@ class UserService {
         );
         activeComplaints = compSnapshot.size;
       } catch {
-        // use baseline fallback
+        // Fallback to local service
       }
 
       try {
@@ -661,7 +664,34 @@ class UserService {
         );
         pendingGatePasses = gpSnapshot.size;
       } catch {
-        // use baseline fallback
+        // Fallback to local service
+      }
+    }
+
+    if (pendingRequests === 0) {
+      try {
+        const allReqs = await requestService.getAllRequests();
+        pendingRequests = allReqs.filter((r) => r.status === 'PENDING').length;
+      } catch {
+        pendingRequests = 0;
+      }
+    }
+
+    if (activeComplaints === 0) {
+      try {
+        const allCmp = await complaintService.getComplaints();
+        activeComplaints = allCmp.filter((c) => ['SUBMITTED', 'IN_PROGRESS', 'OVERDUE'].includes(c.status)).length;
+      } catch {
+        activeComplaints = 0;
+      }
+    }
+
+    if (pendingGatePasses === 0) {
+      try {
+        const allGp = await gatePassService.getPasses();
+        pendingGatePasses = allGp.filter((g: any) => g.status === 'PENDING').length;
+      } catch {
+        pendingGatePasses = 0;
       }
     }
 

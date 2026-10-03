@@ -842,28 +842,34 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {upcomingEvents.map((ev) => (
-              <div
-                key={ev.id}
-                style={{
-                  padding: '0.75rem',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-default)',
-                  backgroundColor: 'var(--bg-subtle)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{ev.title}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {new Date(ev.startDate).toLocaleDateString()} • {ev.location}
+            {upcomingEvents.length === 0 ? (
+              <p style={{ margin: '0.5rem 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                No upcoming calendar events scheduled.
+              </p>
+            ) : (
+              upcomingEvents.map((ev) => (
+                <div
+                  key={ev.id}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-default)',
+                    backgroundColor: 'var(--bg-subtle)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{ev.title}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      {new Date(ev.startDate).toLocaleDateString()} • {ev.location}
+                    </div>
                   </div>
+                  <Badge variant="info">{ev.category.toUpperCase()}</Badge>
                 </div>
-                <Badge variant="info">{ev.category.toUpperCase()}</Badge>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </Card>
 
@@ -880,28 +886,34 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {activePolls.map((poll) => {
-              const totalVotes = poll.options.reduce((acc, curr) => acc + curr.votes, 0);
-              return (
-                <div
-                  key={poll.id}
-                  style={{
-                    padding: '0.75rem',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-default)',
-                    backgroundColor: 'var(--bg-subtle)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{poll.title}</div>
-                    <Badge variant="success">{totalVotes} Votes</Badge>
+            {activePolls.length === 0 ? (
+              <p style={{ margin: '0.5rem 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                No active campus polls running.
+              </p>
+            ) : (
+              activePolls.map((poll) => {
+                const totalVotes = poll.options.reduce((acc, curr) => acc + curr.votes, 0);
+                return (
+                  <div
+                    key={poll.id}
+                    style={{
+                      padding: '0.75rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-default)',
+                      backgroundColor: 'var(--bg-subtle)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{poll.title}</div>
+                      <Badge variant="success">{totalVotes} Votes</Badge>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                      Closes: {new Date(poll.expiryDate).toLocaleDateString()}
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                    Closes: {new Date(poll.expiryDate).toLocaleDateString()}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </Card>
       </div>

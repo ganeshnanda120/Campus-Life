@@ -16,113 +16,6 @@ import type { ServiceDirectoryEntry, UserRecord } from '../types';
 
 const DIRECTORY_STORAGE_KEY = 'campus_life_service_directory';
 
-const INITIAL_SERVICES: ServiceDirectoryEntry[] = [
-  {
-    id: 'svc_001',
-    department: 'Examination',
-    responsibleOffice: 'Office of the Controller of Examinations',
-    servicesProvided: ['Semester Grade Cards', 'Official Transcripts', 'Provisional Degree', 'Form Fill-up Verification', 'Re-evaluation Grievances'],
-    workingHours: '09:30 AM – 05:00 PM (Monday to Saturday)',
-    location: 'Administrative Block, 1st Floor, Room 104',
-    contactEmail: 'coe@bputcampuslife.edu',
-    contactPhone: '+91 674 2300101',
-    instructions: 'Bring your student digital ID and examination admit card for all in-person certificate collections.',
-    status: 'ACTIVE',
-    createdAt: '2026-09-01T08:00:00.000Z',
-  },
-  {
-    id: 'svc_002',
-    department: 'Hostel',
-    responsibleOffice: 'Chief Warden & Hostel Administrative Office',
-    servicesProvided: ['Room Allocation & Bed Transfer', 'Maintenance Oversight', 'Gate Pass Approvals', 'Guest Accommodation Clearance'],
-    workingHours: '08:00 AM – 08:00 PM (All Days)',
-    location: 'Hostel Block A, Ground Floor Administration Suite',
-    contactEmail: 'chiefwarden@bputcampuslife.edu',
-    contactPhone: '+91 674 2300102',
-    instructions: 'Gate pass physical verification slips can be collected during evening roll call between 07:00 PM and 08:30 PM.',
-    status: 'ACTIVE',
-    createdAt: '2026-09-01T08:00:00.000Z',
-  },
-  {
-    id: 'svc_003',
-    department: 'IT',
-    responsibleOffice: 'Campus IT Services & Network Operating Center (NOC)',
-    servicesProvided: ['Campus Wi-Fi Credentials', 'Email Verification Support', 'ERP Account Password Reset', 'Computer Lab Access Tokens'],
-    workingHours: '09:00 AM – 07:00 PM (Monday to Saturday)',
-    location: 'Central Computing Building, 2nd Floor, Room 210',
-    contactEmail: 'ithelpdesk@bputcampuslife.edu',
-    contactPhone: '+91 674 2300103',
-    instructions: 'Submit portal login reset tickets through the digital Help Center or visit with institutional identity card.',
-    status: 'ACTIVE',
-    createdAt: '2026-09-01T08:00:00.000Z',
-  },
-  {
-    id: 'svc_004',
-    department: 'Medical',
-    responsibleOffice: 'Campus Health & Emergency Dispensary',
-    servicesProvided: ['24/7 First Aid & Urgent Care', 'Prescription Pharmacy', 'Doctor Consultation', 'Emergency Ambulance Dispatch'],
-    workingHours: '24 Hours / 7 Days a Week',
-    location: 'Health Dispensary Block, Adjacent to Gate 2',
-    contactEmail: 'healthcenter@bputcampuslife.edu',
-    contactPhone: '+91 674 2300108',
-    instructions: 'Direct emergency helpline available 24/7 for all hostellers and campus residents.',
-    status: 'ACTIVE',
-    createdAt: '2026-09-01T08:00:00.000Z',
-  },
-  {
-    id: 'svc_005',
-    department: 'Accounts',
-    responsibleOffice: 'Finance & Accounts Division',
-    servicesProvided: ['Semester Fee Receipts', 'Hostel Mess Fee Verification', 'Caution Deposit Refunds', 'Scholarship Endorsement'],
-    workingHours: '10:00 AM – 04:30 PM (Monday to Friday)',
-    location: 'Administrative Block, Ground Floor Counter 2–4',
-    contactEmail: 'accounts@bputcampuslife.edu',
-    contactPhone: '+91 674 2300105',
-    instructions: 'Please produce online payment transaction UTR numbers for fee reconciliation.',
-    status: 'ACTIVE',
-    createdAt: '2026-09-01T08:00:00.000Z',
-  },
-  {
-    id: 'svc_006',
-    department: 'Library',
-    responsibleOffice: 'Biju Patnaik Central University Library',
-    servicesProvided: ['Book Borrowing & Renewals', 'Digital Research IEEE Access', 'Plagiarism Verification Checks', 'Quiet Reading Hall Booking'],
-    workingHours: '08:00 AM – 10:00 PM (Examination week: Until 12:00 AM)',
-    location: 'Central Library Building',
-    contactEmail: 'library@bputcampuslife.edu',
-    contactPhone: '+91 674 2300106',
-    instructions: 'Digital ID barcode required for turnstile entry and book borrowing.',
-    status: 'ACTIVE',
-    createdAt: '2026-09-01T08:00:00.000Z',
-  },
-  {
-    id: 'svc_007',
-    department: 'Maintenance',
-    responsibleOffice: 'Campus Estate & Engineering Maintenance Division',
-    servicesProvided: ['Electrical Repair Dispatch', 'Plumbing & Water Supply', 'Civil Infrastructure Rectification', 'Air Conditioning Maintenance'],
-    workingHours: '08:00 AM – 06:00 PM (Emergency on-call 24/7)',
-    location: 'Estate Office Workshop, Near Power Substation',
-    contactEmail: 'estate@bputcampuslife.edu',
-    contactPhone: '+91 674 2300107',
-    instructions: 'Register routine maintenance tickets through the Complaints & SLA module for monitored resolution.',
-    status: 'ACTIVE',
-    createdAt: '2026-09-01T08:00:00.000Z',
-  },
-  {
-    id: 'svc_008',
-    department: 'Student Affairs',
-    responsibleOffice: 'Dean of Student Welfare & Extracurriculars',
-    servicesProvided: ['Student Club Approvals', 'Concession Bus Passes', 'Anti-Ragging Squad Assistance', 'Festival & Symposium Permissions'],
-    workingHours: '09:30 AM – 05:00 PM (Monday to Friday)',
-    location: 'Student Activity Center (SAC), 1st Floor',
-    contactEmail: 'dsw@bputcampuslife.edu',
-    contactPhone: '+91 674 2300109',
-    instructions: 'Club proposals must be endorsed by the respective faculty advisor before submitting.',
-    status: 'ACTIVE',
-    createdAt: '2026-09-01T08:00:00.000Z',
-  },
-];
-
 function getLocalServices(): ServiceDirectoryEntry[] {
   try {
     const raw = safeStorage.getItem(DIRECTORY_STORAGE_KEY);
@@ -130,7 +23,7 @@ function getLocalServices(): ServiceDirectoryEntry[] {
   } catch {
     // ignore
   }
-  return INITIAL_SERVICES;
+  return [];
 }
 
 function saveLocalServices(services: ServiceDirectoryEntry[]) {

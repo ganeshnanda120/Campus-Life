@@ -235,29 +235,6 @@ export const LoginPage: React.FC = () => {
                   {isLoading ? loadingText || 'Checking email...' : 'Next'}
                 </Button>
               </div>
-
-              {/* Authorized Testing Accounts Helper */}
-              <div
-                style={{
-                  marginTop: '1.5rem',
-                  padding: '0.85rem',
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: 'var(--bg-subtle)',
-                  fontSize: '0.78rem',
-                  color: 'var(--text-muted)',
-                  border: '1px solid var(--border-subtle)',
-                }}
-              >
-                <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
-                  Demo Accounts for Phase 2 Verification:
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                  <div><code>admin@campuslife.edu</code> (MAIN_ADMIN)</div>
-                  <div><code>student@campuslife.edu</code> (Activated Student)</div>
-                  <div><code>new.student@campuslife.edu</code> (Unactivated Student)</div>
-                  <div><code>inactive.student@campuslife.edu</code> (Inactive Account)</div>
-                </div>
-              </div>
             </form>
           ) : (
             /* Form Step 2: Password Entry (Section 14 - Subsequent Login) */
