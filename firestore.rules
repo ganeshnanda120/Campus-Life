@@ -1,0 +1,277 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Retrieve user document to inspect application role and permissions
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isMainAdmin() {
+      return isAuthenticated() && getUserData().role == 'MAIN_ADMIN';
+    }
+
+    function isSubAdmin() {
+      return isAuthenticated() && getUserData().role == 'SUB_ADMIN';
+    }
+
+    function hasPermission(perm) {
+      return isMainAdmin() || (isSubAdmin() && perm in getUserData().permissions);
+    }
+
+    // --------------------------------------------------------------------------
+    // Users Collection (Administrator-Controlled Authorization Layer)
+    // --------------------------------------------------------------------------
+    match /users/{userId} {
+      // Users can read their own profile; authorized administrators can read user records
+      allow read: if isOwner(userId) ||
+        isMainAdmin() ||
+        hasPermission('MANAGE_STUDENTS') ||
+        hasPermission('MANAGE_SUB_ADMINS') ||
+        hasPermission('MANAGE_FACULTY') ||
+        hasPermission('MANAGE_STAFF');
+
+      // Only administrators can create new users (NO SELF-REGISTRATION)
+      allow create: if isMainAdmin() ||
+        hasPermission('MANAGE_STUDENTS') ||
+        hasPermission('MANAGE_SUB_ADMINS') ||
+        hasPermission('MANAGE_FACULTY') ||
+        hasPermission('MANAGE_STAFF');
+
+      // Update constraints:
+      // Admins have update rights according to their specific permissions.
+      // Normal users may only complete initial activation (setting isActivated: true)
+      // or update personal contact info (phone, photoUrl).
+      // They CANNOT alter role, permissions, isActive, studentId, rollNumber, or employeeId.
+      allow update: if isMainAdmin() ||
+        (hasPermission('MANAGE_STUDENTS') && resource.data.role == 'STUDENT') ||
+        (hasPermission('MANAGE_FACULTY') && resource.data.role == 'FACULTY') ||
+        (hasPermission('MANAGE_STAFF') && resource.data.role == 'STAFF') ||
+        (hasPermission('MANAGE_SUB_ADMINS') && resource.data.role == 'SUB_ADMIN') ||
+        (isOwner(userId) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'role', 'permissions', 'isActive', 'studentId', 'rollNumber', 'employeeId', 'department', 'branch', 'year'
+          ])
+        );
+
+      // Only MAIN_ADMIN can deactivate/delete records
+      allow delete: if isMainAdmin();
+    }
+
+    // --------------------------------------------------------------------------
+    // Operational Collections (Requests, Complaints, GatePasses)
+    // --------------------------------------------------------------------------
+    match /requests/{requestId} {
+      allow read: if isOwner(resource.data.studentId) || isMainAdmin() || hasPermission('MANAGE_REQUESTS');
+      allow create: if isAuthenticated() && request.resource.data.studentId == request.auth.uid;
+      allow update: if isMainAdmin() || hasPermission('MANAGE_REQUESTS') ||
+        (isOwner(resource.data.studentId) && resource.data.status == 'PENDING');
+      allow delete: if isMainAdmin();
+    }
+
+    match /complaints/{complaintId} {
+      allow read: if isOwner(resource.data.studentId) ||
+        isMainAdmin() ||
+        hasPermission('MANAGE_COMPLAINTS') ||
+        (isAuthenticated() && resource.data.assignedStaffId == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.studentId == request.auth.uid;
+      allow update: if isMainAdmin() ||
+        hasPermission('MANAGE_COMPLAINTS') ||
+        (isAuthenticated() && resource.data.assignedStaffId == request.auth.uid) ||
+        (isOwner(resource.data.studentId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feedback']));
+      allow delete: if isMainAdmin();
+    }
+
+    match /gatePassRequests/{passId} {
+      allow read: if isOwner(resource.data.studentId) ||
+        isMainAdmin() ||
+        hasPermission('MANAGE_GATE_PASS') ||
+        (isAuthenticated() && getUserData().role == 'STAFF');
+      allow create: if isAuthenticated() && request.resource.data.studentId == request.auth.uid;
+      allow update: if isMainAdmin() || hasPermission('MANAGE_GATE_PASS');
+      allow delete: if isMainAdmin();
+    }
+
+    match /visitorLogs/{logId} {
+      allow read: if isMainAdmin() || hasPermission('MANAGE_GATE_PASS') || (isAuthenticated() && getUserData().role == 'STAFF');
+      allow create: if isMainAdmin() || hasPermission('MANAGE_GATE_PASS') || (isAuthenticated() && getUserData().role == 'STAFF');
+      allow update, delete: if isMainAdmin();
+    }
+
+    match /hostelRooms/{roomId} {
+      allow read: if isAuthenticated();
+      allow write: if isMainAdmin() || hasPermission('MANAGE_HOSTEL');
+    }
+
+    match /hostelAllocations/{allocId} {
+      allow read: if isOwner(resource.data.studentId) || isMainAdmin() || hasPermission('MANAGE_HOSTEL');
+      allow write: if isMainAdmin() || hasPermission('MANAGE_HOSTEL');
+    }
+
+    match /hostelNotices/{noticeId} {
+      allow read: if isAuthenticated();
+      allow write: if isMainAdmin() || hasPermission('MANAGE_HOSTEL');
+    }
+
+    match /messMenu/{menuId} {
+      allow read: if isAuthenticated();
+      allow write: if isMainAdmin() || hasPermission('MANAGE_MESS');
+    }
+
+    match /messAnnouncements/{annId} {
+      allow read: if isAuthenticated();
+      allow write: if isMainAdmin() || hasPermission('MANAGE_MESS');
+    }
+
+    match /messFeedback/{fbId} {
+      allow read: if isOwner(resource.data.studentId) || isMainAdmin() || hasPermission('MANAGE_MESS');
+      allow create: if isAuthenticated() && request.resource.data.studentId == request.auth.uid;
+      allow update, delete: if isMainAdmin();
+    }
+
+    match /mealRecords/{mealId} {
+      allow read: if isOwner(resource.data.studentId) || isMainAdmin() || hasPermission('MANAGE_MESS') || (isAuthenticated() && getUserData().role == 'STAFF');
+      allow write: if isMainAdmin() || hasPermission('MANAGE_MESS') || (isAuthenticated() && getUserData().role == 'STAFF');
+    }
+
+    // --------------------------------------------------------------------------
+    // Public/Targeted Notices & Circulars
+    // --------------------------------------------------------------------------
+    match /notices/{noticeId} {
+      allow read: if isAuthenticated();
+      allow write: if isMainAdmin() || hasPermission('MANAGE_NOTICES');
+    }
+
+    match /noticeReads/{readId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isMainAdmin();
+    }
+
+    // --------------------------------------------------------------------------
+    // Campus Calendar & Events (Phase 6)
+    // --------------------------------------------------------------------------
+    match /calendar/{eventId} {
+      allow read: if isAuthenticated();
+      allow write: if isMainAdmin() || hasPermission('MANAGE_CALENDAR');
+    }
+
+    // --------------------------------------------------------------------------
+    // Lost & Found (Phase 6)
+    // --------------------------------------------------------------------------
+    match /lostFound/{itemId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.submittedBy == request.auth.uid;
+      allow update: if isMainAdmin() ||
+        hasPermission('MANAGE_LOST_FOUND') ||
+        (isAuthenticated() && resource.data.submittedBy == request.auth.uid) ||
+        (isAuthenticated() && request.resource.data.status == 'CLAIM_PENDING');
+      allow delete: if isMainAdmin() || hasPermission('MANAGE_LOST_FOUND') || (isAuthenticated() && resource.data.submittedBy == request.auth.uid);
+    }
+
+    // --------------------------------------------------------------------------
+    // Campus Digital Polls (Phase 6)
+    // --------------------------------------------------------------------------
+    match /polls/{pollId} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isMainAdmin() || hasPermission('MANAGE_POLLS');
+      allow update: if isMainAdmin() ||
+        hasPermission('MANAGE_POLLS') ||
+        (isAuthenticated() && request.resource.data.votedUserIds.hasAny([request.auth.uid]));
+    }
+
+    // --------------------------------------------------------------------------
+    // Help Center & Deterministic FAQs (Phase 6)
+    // --------------------------------------------------------------------------
+    match /helpCenter/{faqId} {
+      allow read: if isAuthenticated();
+      allow write: if isMainAdmin() || hasPermission('MANAGE_SETTINGS');
+    }
+
+    // --------------------------------------------------------------------------
+    // Campus Service Directory (Phase 6)
+    // --------------------------------------------------------------------------
+    match /serviceDirectory/{serviceId} {
+      allow read: if isAuthenticated();
+      allow write: if isMainAdmin() || hasPermission('MANAGE_SERVICE_DIRECTORY');
+    }
+
+    // --------------------------------------------------------------------------
+    // Notifications (In-Website Bell Notification Center)
+    // --------------------------------------------------------------------------
+    match /notifications/{notificationId} {
+      allow read, update: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.userId == 'ALL');
+      allow create: if isAuthenticated();
+      allow delete: if isMainAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+    }
+
+    // --------------------------------------------------------------------------
+    // Attendance Records (Student reading own, Faculty/Admin marking)
+    // --------------------------------------------------------------------------
+    match /attendanceRecords/{recordId} {
+      allow read: if isAuthenticated() &&
+        (isOwner(resource.data.studentId) ||
+         isMainAdmin() ||
+         hasPermission('MANAGE_ATTENDANCE') ||
+         getUserData().role == 'FACULTY');
+      allow create, update: if isMainAdmin() ||
+        hasPermission('MANAGE_ATTENDANCE') ||
+        (isAuthenticated() && getUserData().role == 'FACULTY');
+      allow delete: if isMainAdmin();
+    }
+
+    // --------------------------------------------------------------------------
+    // Timetables and Class Updates
+    // --------------------------------------------------------------------------
+    match /timetables/{timetableId} {
+      allow read: if isAuthenticated();
+      allow write: if isMainAdmin() ||
+        hasPermission('MANAGE_TIMETABLE') ||
+        (isAuthenticated() && getUserData().role == 'FACULTY');
+    }
+
+    // --------------------------------------------------------------------------
+    // Digital Certificates (Read by student/admin, Issued strictly by Admin)
+    // --------------------------------------------------------------------------
+    match /certificates/{certificateId} {
+      allow read: if isAuthenticated() &&
+        (isOwner(resource.data.studentId) ||
+         isMainAdmin() ||
+         hasPermission('MANAGE_REQUESTS'));
+      // Only authorized administrators can issue/modify certificates (students cannot)
+      allow write: if isMainAdmin() || hasPermission('MANAGE_REQUESTS');
+    }
+
+    // --------------------------------------------------------------------------
+    // Activities (User activity log - read by user/admin, append-only)
+    // --------------------------------------------------------------------------
+    match /activities/{activityId} {
+      allow read: if isAuthenticated() &&
+        (isOwner(resource.data.userId) ||
+         isMainAdmin() ||
+         hasPermission('VIEW_AUDIT_LOGS'));
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false; // Activities are immutable
+    }
+
+    // --------------------------------------------------------------------------
+    // Audit Logs (Immutable Security Audit Trail)
+    // --------------------------------------------------------------------------
+    match /auditLogs/{logId} {
+      allow read: if isMainAdmin() || hasPermission('VIEW_AUDIT_LOGS');
+      allow create: if isAuthenticated();
+      allow update, delete: if false; // Audit logs are strictly append-only and immutable
+    }
+  }
+}
+
