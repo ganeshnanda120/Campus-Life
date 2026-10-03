@@ -33,46 +33,6 @@ if (typeof window !== 'undefined') {
   });
 }
 
-const INITIAL_POLLS: CampusPoll[] = [
-  {
-    id: 'poll_001',
-    title: 'Sunday Weekend Special Mess Dinner Preference',
-    question: 'Select your preferred main course for the upcoming celebratory Sunday dinner meal across student dining halls.',
-    description: 'Student affairs dining committee is selecting the special menu option based on popular majority student votes.',
-    options: [
-      { id: 'opt_1', text: 'Paneer Tikka Biryani with Veg Raita & Gulab Jamun', votes: 482 },
-      { id: 'opt_2', text: 'Chole Bhature with Punjabi Lassi & Kheer', votes: 180 },
-      { id: 'opt_3', text: 'South Indian Deluxe Thali (Dosa, Uttapam, Payasam)', votes: 90 },
-      { id: 'opt_4', text: 'Fried Rice with Manchurian & Hakka Noodles', votes: 145 },
-    ],
-    votedUserIds: ['student_uid_demo_099'],
-    allowMultiple: false,
-    expiryDate: '2026-10-10T23:59:59.000Z',
-    status: 'ACTIVE',
-    isActive: true,
-    createdBy: 'subadmin_uid_002',
-    createdByName: 'Mess Committee In-charge',
-    createdAt: '2026-10-01T12:00:00.000Z',
-  },
-  {
-    id: 'poll_002',
-    title: 'Central Library Extended Night Hours Feedback',
-    question: 'Should the central library air-conditioned reading halls remain open until 02:00 AM during mid-semester examination week?',
-    description: 'University senate is reviewing feasibility of extended quiet study hours and nocturnal campus shuttle facilities.',
-    options: [
-      { id: 'opt_yes', text: 'Yes, extend reading halls until 02:00 AM', votes: 612 },
-      { id: 'opt_no', text: 'No, current midnight 12:00 AM timing is sufficient', votes: 84 },
-    ],
-    votedUserIds: [],
-    allowMultiple: false,
-    expiryDate: '2026-10-14T23:59:59.000Z',
-    status: 'ACTIVE',
-    isActive: true,
-    createdBy: 'admin_uid_001',
-    createdByName: 'Chief Librarian',
-    createdAt: '2026-10-02T09:00:00.000Z',
-  },
-];
 
 function getLocalPolls(): CampusPoll[] {
   try {
@@ -81,7 +41,7 @@ function getLocalPolls(): CampusPoll[] {
   } catch {
     // ignore
   }
-  return INITIAL_POLLS;
+  return [];
 }
 
 function saveLocalPolls(polls: CampusPoll[]) {

@@ -49,39 +49,7 @@ function getLocalNotifications(): InAppNotification[] {
   } catch {
     // ignore
   }
-  return [
-    {
-      id: 'notif_init_001',
-      userId: 'student_uid_001',
-      title: 'Academic Term Registration Active',
-      message: 'Semester 6 academic course selections and timetable are now active.',
-      type: 'system',
-      link: '/student/timetable',
-      isRead: false,
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-    {
-      id: 'notif_init_002',
-      userId: 'student_uid_001',
-      title: 'Bonafide Certificate Update',
-      message: 'Your Bonafide Certificate request #REQ-2026-089 is now Under Review.',
-      type: 'request',
-      entityId: 'REQ-2026-089',
-      link: '/student/requests',
-      isRead: false,
-      createdAt: new Date(Date.now() - 7200000).toISOString(),
-    },
-    {
-      id: 'notif_init_003',
-      userId: 'student_uid_001',
-      title: 'Attendance Alert: CS303',
-      message: 'Your attendance in Computer Networks is at 74.5%. Ensure you attend the next class to maintain >= 75% eligibility.',
-      type: 'attendance',
-      link: '/student/attendance',
-      isRead: true,
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-    }
-  ];
+  return [];
 }
 
 function saveLocalNotifications(notifications: InAppNotification[]) {

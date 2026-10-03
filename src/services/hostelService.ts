@@ -26,51 +26,7 @@ function getLocalRooms(): HostelRoom[] {
   } catch {
     // ignore
   }
-
-  return [
-    {
-      id: 'room_204_A',
-      hostelName: 'Aryabhatta Hall of Residence',
-      block: 'Block A',
-      roomNumber: '204',
-      floor: 2,
-      capacity: 3,
-      occupied: 3,
-      wardenName: 'Prof. Rajesh Swain',
-      wardenContact: '+91 98765 00001',
-      caretakerName: 'Mr. J. K. Nayak',
-      caretakerContact: '+91 98765 00012',
-      curfewTime: '09:00 PM',
-    },
-    {
-      id: 'room_205_A',
-      hostelName: 'Aryabhatta Hall of Residence',
-      block: 'Block A',
-      roomNumber: '205',
-      floor: 2,
-      capacity: 3,
-      occupied: 2,
-      wardenName: 'Prof. Rajesh Swain',
-      wardenContact: '+91 98765 00001',
-      caretakerName: 'Mr. J. K. Nayak',
-      caretakerContact: '+91 98765 00012',
-      curfewTime: '09:00 PM',
-    },
-    {
-      id: 'room_101_B',
-      hostelName: 'Kalam Hall of Residence',
-      block: 'Block B',
-      roomNumber: '101',
-      floor: 1,
-      capacity: 2,
-      occupied: 2,
-      wardenName: 'Dr. Snigdha Mohapatra',
-      wardenContact: '+91 98765 00020',
-      caretakerName: 'Mrs. R. Panda',
-      caretakerContact: '+91 98765 00025',
-      curfewTime: '09:00 PM',
-    },
-  ];
+  return [];
 }
 
 function saveLocalRooms(rooms: HostelRoom[]) {
@@ -88,25 +44,7 @@ function getLocalAllocations(): HostelAllocation[] {
   } catch {
     // ignore
   }
-
-  return [
-    {
-      id: 'alloc_001',
-      studentId: 'student_uid_001',
-      studentName: 'Aarav Sharma',
-      studentRoll: '220101001',
-      hostelName: 'Aryabhatta Hall of Residence',
-      block: 'Block A',
-      roomNumber: '204',
-      bedNumber: 'A',
-      allocationDate: '2025-07-20',
-      status: 'ALLOCATED',
-      roommates: [
-        { name: 'Vikash Kumar', rollNumber: '220101015', branch: 'CSE' },
-        { name: 'Subham Pradhan', rollNumber: '220101042', branch: 'CSE' },
-      ],
-    },
-  ];
+  return [];
 }
 
 function saveLocalAllocations(allocations: HostelAllocation[]) {
@@ -124,26 +62,7 @@ function getLocalNotices(): HostelNotice[] {
   } catch {
     // ignore
   }
-
-  return [
-    {
-      id: 'hnotice_001',
-      title: 'Water Tank Sanitization Schedule',
-      content: 'Overhead water tanks in Block A and B will undergo chemical disinfection on Sunday from 09:00 AM to 01:00 PM. Alternate water points are active on the ground floor.',
-      hostelName: 'Aryabhatta Hall of Residence',
-      block: 'Block A & B',
-      date: '2026-10-02',
-      priority: 'IMPORTANT',
-    },
-    {
-      id: 'hnotice_002',
-      title: 'Quiet Study Hours Implementation',
-      content: 'In view of upcoming mid-term examinations, strict silence is to be observed in corridors and study halls after 10:00 PM.',
-      hostelName: 'Aryabhatta Hall of Residence',
-      date: '2026-09-28',
-      priority: 'NORMAL',
-    },
-  ];
+  return [];
 }
 
 function saveLocalNotices(notices: HostelNotice[]) {

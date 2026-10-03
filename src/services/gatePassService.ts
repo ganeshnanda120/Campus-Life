@@ -61,46 +61,7 @@ function getLocalPasses(): GatePass[] {
   } catch {
     // ignore
   }
-
-  const now = Date.now();
-  return [
-    {
-      id: 'gp_mock_001',
-      gatePassId: 'GP-2026-441',
-      studentId: 'student_uid_001',
-      studentName: 'Aarav Sharma',
-      studentRoll: '220101001',
-      studentCategory: 'HOSTELER',
-      destination: 'Cuttack (Home Town)',
-      reason: 'Home Town Visit (Diwali Festival Break)',
-      leavingDate: new Date(now + 86400000).toISOString().split('T')[0],
-      leavingTime: '05:00 PM',
-      expectedReturn: new Date(now + 4 * 86400000).toISOString().split('T')[0] + ' 08:00 PM',
-      description: 'Train journey tickets booked. Informed hostel warden.',
-      status: 'APPROVED',
-      token: generateSafeToken('GP-2026-441', 'student_uid_001'),
-      approvedBy: 'Prof. Rajesh Swain (Warden)',
-      approvedAt: new Date(now - 7200000).toISOString(),
-      createdAt: new Date(now - 14400000).toISOString(),
-    },
-    {
-      id: 'gp_mock_002',
-      gatePassId: 'GP-2026-442',
-      studentId: 'student_uid_001',
-      studentName: 'Aarav Sharma',
-      studentRoll: '220101001',
-      studentCategory: 'HOSTELER',
-      destination: 'Bhubaneswar Market',
-      reason: 'Purchasing Project Electronics Components',
-      leavingDate: new Date(now).toISOString().split('T')[0],
-      leavingTime: '02:00 PM',
-      expectedReturn: new Date(now).toISOString().split('T')[0] + ' 07:00 PM',
-      description: 'Need IC 555 and sensors for capstone project hardware prototype.',
-      status: 'PENDING',
-      token: generateSafeToken('GP-2026-442', 'student_uid_001'),
-      createdAt: new Date(now - 3600000).toISOString(),
-    },
-  ];
+  return [];
 }
 
 function saveLocalPasses(passes: GatePass[]) {
@@ -118,24 +79,7 @@ function getLocalVisitorLogs(): VisitorExitLog[] {
   } catch {
     // ignore
   }
-
-  const now = Date.now();
-  return [
-    {
-      id: 'log_exit_001',
-      gatePassId: 'GP-2026-440',
-      studentId: 'student_uid_001',
-      studentName: 'Aarav Sharma',
-      studentRoll: '220101001',
-      exitTime: new Date(now - 48 * 3600000).toISOString(),
-      expectedReturn: new Date(now - 24 * 3600000).toISOString(),
-      actualReturn: new Date(now - 25 * 3600000).toISOString(),
-      status: 'RETURNED',
-      recordedBy: 'Security Guard P. Nayak',
-      recordedByRole: 'STAFF',
-      timestamp: new Date(now - 25 * 3600000).toISOString(),
-    },
-  ];
+  return [];
 }
 
 function saveLocalVisitorLogs(logs: VisitorExitLog[]) {

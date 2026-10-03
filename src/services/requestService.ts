@@ -46,129 +46,6 @@ if (typeof window !== 'undefined') {
   });
 }
 
-const INITIAL_REQUESTS: StudentRequest[] = [
-  {
-    id: 'req_001',
-    requestId: 'REQ-2026-089',
-    studentId: 'STU2026001',
-    studentName: 'Aarav Sharma',
-    studentEmail: 'student@campuslife.edu',
-    department: 'Computer Science & Engineering',
-    requestType: 'bonafide_certificate',
-    title: 'Bonafide Certificate for State Scholarship',
-    description: 'Required for submission to Odisha State Post-Matric Scholarship portal verification.',
-    status: 'IN_PROGRESS',
-    assignedDepartment: 'Academic Cell',
-    assignedStaffName: 'Dr. Sanjeev Mohanty',
-    submittedAt: '2026-02-08T09:30:00.000Z',
-    updatedAt: '2026-02-09T14:15:00.000Z',
-    timeline: [
-      {
-        id: 'tl_001_1',
-        status: 'PENDING',
-        date: '2026-02-08',
-        time: '09:30 AM',
-        actor: 'Aarav Sharma',
-        actorRole: 'STUDENT',
-        action: 'Application Submitted',
-        message: 'Student submitted application with fee clearance certificate.',
-      },
-      {
-        id: 'tl_001_2',
-        status: 'UNDER_REVIEW',
-        date: '2026-02-08',
-        time: '02:00 PM',
-        actor: 'Academic Cell Staff',
-        actorRole: 'STAFF',
-        action: 'Under Verification',
-        message: 'Verifying student enrolment number, semester fee receipts, and branch records.',
-      },
-      {
-        id: 'tl_001_3',
-        status: 'IN_PROGRESS',
-        date: '2026-02-09',
-        time: '02:15 PM',
-        actor: 'Dr. Sanjeev Mohanty',
-        actorRole: 'FACULTY',
-        action: 'Forwarded for HOD Signature',
-        message: 'Eligibility confirmed. Forwarded to departmental authorities for digital certification.',
-      }
-    ],
-  },
-  {
-    id: 'req_002',
-    requestId: 'REQ-2026-042',
-    studentId: 'STU2026001',
-    studentName: 'Aarav Sharma',
-    studentEmail: 'student@campuslife.edu',
-    department: 'Computer Science & Engineering',
-    requestType: 'study_certificate',
-    title: 'Study & Conduct Certificate for Bank Loan',
-    description: 'Application for educational credit verification through SBI University Campus branch.',
-    status: 'COMPLETED',
-    assignedDepartment: 'Academic Affairs',
-    assignedStaffName: 'Prof. Rajesh Swain',
-    submittedAt: '2026-01-18T11:00:00.000Z',
-    updatedAt: '2026-01-20T14:30:00.000Z',
-    timeline: [
-      {
-        id: 'tl_002_1',
-        status: 'PENDING',
-        date: '2026-01-18',
-        time: '11:00 AM',
-        actor: 'Aarav Sharma',
-        actorRole: 'STUDENT',
-        action: 'Submitted Request',
-      },
-      {
-        id: 'tl_002_2',
-        status: 'APPROVED',
-        date: '2026-01-20',
-        time: '11:30 AM',
-        actor: 'Prof. Rajesh Swain',
-        actorRole: 'SUB_ADMIN',
-        action: 'Authorized & Approved',
-        message: 'Verified academic standing. Certificate generated.',
-      },
-      {
-        id: 'tl_002_3',
-        status: 'COMPLETED',
-        date: '2026-01-20',
-        time: '02:30 PM',
-        actor: 'Chief Administrative Officer',
-        actorRole: 'MAIN_ADMIN',
-        action: 'Certificate Issued',
-        message: 'Digital Certificate CERT-2026-0078 is ready for viewing and download.',
-      }
-    ],
-  },
-  {
-    id: 'req_003',
-    requestId: 'REQ-2026-114',
-    studentId: 'STU2026001',
-    studentName: 'Aarav Sharma',
-    studentEmail: 'student@campuslife.edu',
-    department: 'Computer Science & Engineering',
-    requestType: 'leave_request',
-    title: 'Duty Leave for State Hackathon',
-    description: 'Participating in Smart Odisha Hackathon 2026 grand finale representing the university.',
-    status: 'PENDING',
-    submittedAt: '2026-02-12T16:45:00.000Z',
-    updatedAt: '2026-02-12T16:45:00.000Z',
-    timeline: [
-      {
-        id: 'tl_003_1',
-        status: 'PENDING',
-        date: '2026-02-12',
-        time: '04:45 PM',
-        actor: 'Aarav Sharma',
-        actorRole: 'STUDENT',
-        action: 'Application Submitted',
-        message: 'Official invitation letter attached for leave approval.',
-      }
-    ],
-  }
-];
 
 function getLocalRequests(): StudentRequest[] {
   try {
@@ -177,12 +54,7 @@ function getLocalRequests(): StudentRequest[] {
   } catch {
     // ignore
   }
-  try {
-    safeStorage.setItem(REQUESTS_STORAGE_KEY, JSON.stringify(INITIAL_REQUESTS));
-  } catch {
-    // ignore
-  }
-  return INITIAL_REQUESTS;
+  return [];
 }
 
 function saveLocalRequests(requests: StudentRequest[]) {

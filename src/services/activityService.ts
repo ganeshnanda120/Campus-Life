@@ -21,42 +21,7 @@ function getLocalActivities(): UserActivity[] {
   } catch {
     // ignore
   }
-  return [
-    {
-      id: 'act_init_001',
-      userId: 'student_uid_001',
-      title: 'Request Submitted',
-      description: 'Submitted Bonafide Certificate request (#REQ-2026-089) for state scholarship verification.',
-      entityType: 'request',
-      entityId: 'REQ-2026-089',
-      timestamp: new Date(Date.now() - 7200000).toISOString(),
-    },
-    {
-      id: 'act_init_002',
-      userId: 'student_uid_001',
-      title: 'Attendance Recorded',
-      description: 'Marked PRESENT in CS301 (Database Management Systems) by Dr. Sanjeev Mohanty.',
-      entityType: 'attendance',
-      entityId: 'CS301',
-      timestamp: new Date(Date.now() - 18000000).toISOString(),
-    },
-    {
-      id: 'act_init_003',
-      userId: 'student_uid_001',
-      title: 'Timetable Checked',
-      description: 'Viewed weekly lecture and lab schedule for Semester 6.',
-      entityType: 'timetable',
-      timestamp: new Date(Date.now() - 43200000).toISOString(),
-    },
-    {
-      id: 'act_init_004',
-      userId: 'student_uid_001',
-      title: 'Account Activated',
-      description: 'Completed first-time email verification and established campus password credentials.',
-      entityType: 'auth',
-      timestamp: new Date(Date.now() - 86400000 * 3).toISOString(),
-    }
-  ];
+  return [];
 }
 
 function saveLocalActivities(activities: UserActivity[]) {

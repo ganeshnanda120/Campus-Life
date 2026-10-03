@@ -38,67 +38,7 @@ function getLocalMenu(): MessMenuItem[] {
   } catch {
     // ignore
   }
-
-  return [
-    {
-      id: 'menu_sat_bf',
-      date: '2026-10-03',
-      dayOfWeek: 'Saturday',
-      mealType: 'BREAKFAST',
-      timing: '07:30 AM – 09:30 AM',
-      menu: 'Steamed Idli, Medu Vada, Vegetable Sambar, Coconut Chutney, Hot Tea/Coffee',
-      facility: 'Central Dining Hall 1 & 2',
-    },
-    {
-      id: 'menu_sat_lu',
-      date: '2026-10-03',
-      dayOfWeek: 'Saturday',
-      mealType: 'LUNCH',
-      timing: '12:30 PM – 02:30 PM',
-      menu: 'Steamed Rice, Dal Tadka, Paneer Butter Masala, Aloo Gobi Roast, Sweet Curd, Roasted Papad, Fresh Salad',
-      specialItem: 'Paneer Butter Masala',
-      facility: 'Central Dining Hall 1 & 2',
-    },
-    {
-      id: 'menu_sat_sn',
-      date: '2026-10-03',
-      dayOfWeek: 'Saturday',
-      mealType: 'SNACKS',
-      timing: '05:00 PM – 06:00 PM',
-      menu: 'Crispy Veg Samosa, Mint-Coriander Chutney, Adrak Hot Chai',
-      facility: 'Central Dining Hall 1 & 2',
-    },
-    {
-      id: 'menu_sat_dn',
-      date: '2026-10-03',
-      dayOfWeek: 'Saturday',
-      mealType: 'DINNER',
-      timing: '08:00 PM – 10:00 PM',
-      menu: 'Tawa Roti, Jeera Pulao, Yellow Dal Fry, Seasonal Mixed Vegetable, Rasgulla',
-      specialItem: 'Odia Rasgulla',
-      facility: 'Central Dining Hall 1 & 2',
-    },
-    {
-      id: 'menu_sun_bf',
-      date: '2026-10-04',
-      dayOfWeek: 'Sunday',
-      mealType: 'BREAKFAST',
-      timing: '07:30 AM – 09:30 AM',
-      menu: 'Aloo Puri, Chana Masala, Suji Halwa, Masala Tea',
-      specialItem: 'Suji Halwa',
-      facility: 'Central Dining Hall 1 & 2',
-    },
-    {
-      id: 'menu_sun_lu',
-      date: '2026-10-04',
-      dayOfWeek: 'Sunday',
-      mealType: 'LUNCH',
-      timing: '12:30 PM – 02:30 PM',
-      menu: 'Biryani (Veg / Egg Option), Mix Raita, Dal Makhani, Paneer Tikka Gravy, Gulab Jamun',
-      specialItem: 'Special Sunday Biryani',
-      facility: 'Central Dining Hall 1 & 2',
-    },
-  ];
+  return [];
 }
 
 function saveLocalMenu(menu: MessMenuItem[]) {
@@ -116,27 +56,7 @@ function getLocalAnnouncements(): MessAnnouncement[] {
   } catch {
     // ignore
   }
-
-  return [
-    {
-      id: 'mann_001',
-      title: 'Special Feast for Navratri / Festive Weekend',
-      message: 'Special vegetarian festive feast with sweets and paneer delicacy will be served on Sunday dinner.',
-      date: '2026-10-02',
-      type: 'SPECIAL_MEAL',
-      facility: 'Central Dining Hall 1 & 2',
-      postedBy: 'Mess Committee Secretary',
-    },
-    {
-      id: 'mann_002',
-      title: 'Dining Hall 2 Maintenance & Deep Cleaning',
-      message: 'Dining Hall 2 will undergo sanitization between 03:00 PM and 04:30 PM today. Evening snacks will be served in Dining Hall 1.',
-      date: '2026-10-01',
-      type: 'TIMING_UPDATE',
-      facility: 'Central Dining Hall 2',
-      postedBy: 'Catering Supervisor',
-    },
-  ];
+  return [];
 }
 
 function saveLocalAnnouncements(announcements: MessAnnouncement[]) {
@@ -154,19 +74,7 @@ function getLocalFeedback(): MessFeedback[] {
   } catch {
     // ignore
   }
-
-  return [
-    {
-      id: 'mfb_001',
-      studentId: 'student_uid_001',
-      studentName: 'Aarav Sharma',
-      facility: 'Central Dining Hall 1 & 2',
-      category: 'Food Quality',
-      rating: 4,
-      comment: 'Lunch paneer dish quality was very good. Sambar in breakfast was slightly cold.',
-      submittedAt: '2026-10-01T14:00:00.000Z',
-    },
-  ];
+  return [];
 }
 
 function saveLocalFeedback(feedbacks: MessFeedback[]) {
@@ -184,19 +92,7 @@ function getLocalMealRecords(): MealRecord[] {
   } catch {
     // ignore
   }
-
-  return [
-    {
-      id: 'meal_001',
-      studentId: 'student_uid_001',
-      studentName: 'Aarav Sharma',
-      date: new Date().toISOString().split('T')[0],
-      mealType: 'BREAKFAST',
-      status: 'TAKEN',
-      recordedBy: 'Mess Attendant S. Jena',
-      timestamp: new Date().toISOString(),
-    },
-  ];
+  return [];
 }
 
 function saveLocalMealRecords(records: MealRecord[]) {

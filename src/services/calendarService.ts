@@ -34,67 +34,6 @@ if (typeof window !== 'undefined') {
   });
 }
 
-const INITIAL_EVENTS: CampusCalendarEvent[] = [
-  {
-    id: 'cal_ev_001',
-    title: 'BPUT End-Semester Theory Examinations (Phase 1)',
-    category: 'examination',
-    startDate: '2026-10-15T09:30:00.000Z',
-    endDate: '2026-10-24T12:30:00.000Z',
-    description: 'Autonomous end-semester examinations for 5th and 7th semester students across all engineering branches. Reporting time 09:00 AM sharp at Central Exam Block.',
-    location: 'Central Exam Block, Halls 1 to 8',
-    organizer: 'Office of the Controller of Examinations',
-    status: 'PUBLISHED',
-    createdAt: '2026-10-01T08:00:00.000Z',
-  },
-  {
-    id: 'cal_ev_002',
-    title: 'Diwali & Kali Puja Institutional Break',
-    category: 'holiday',
-    startDate: '2026-10-28T00:00:00.000Z',
-    endDate: '2026-11-02T23:59:59.000Z',
-    description: 'Campus academic activities remain suspended. Hostel mess facilities operate on holiday timings. Central Library reading room open 09:00 AM – 04:00 PM.',
-    location: 'Main University Campus',
-    organizer: 'General Administration',
-    status: 'PUBLISHED',
-    createdAt: '2026-09-25T10:00:00.000Z',
-  },
-  {
-    id: 'cal_ev_003',
-    title: 'Annual Inter-College Hackathon 2026',
-    category: 'event',
-    startDate: '2026-11-14T09:00:00.000Z',
-    endDate: '2026-11-15T18:00:00.000Z',
-    description: '36-hour non-stop prototyping hackathon focusing on Campus Operations, Smart City Solutions, and Green Energy. Mentors from premier tech firms on campus.',
-    location: 'Computing Center & Innovation Hub',
-    organizer: 'Center for Innovation & Entrepreneurship',
-    status: 'PUBLISHED',
-    createdAt: '2026-09-28T12:00:00.000Z',
-  },
-  {
-    id: 'cal_ev_004',
-    title: 'Hands-on Workshop: High Performance Cloud Architectures',
-    category: 'workshop',
-    startDate: '2026-11-20T14:00:00.000Z',
-    endDate: '2026-11-20T17:30:00.000Z',
-    description: 'Interactive session covering distributed systems, containerization, and zero-trust security. Certificate of participation will be issued.',
-    location: 'Seminar Hall 2, Dept of CSE',
-    organizer: 'Department of Computer Science & Engineering',
-    status: 'PUBLISHED',
-    createdAt: '2026-10-02T11:00:00.000Z',
-  },
-  {
-    id: 'cal_ev_005',
-    title: 'Final Date for State Post-Matric Scholarship Submission',
-    category: 'deadline',
-    startDate: '2026-11-05T17:00:00.000Z',
-    description: 'Last date for submission of verified Bonafide and Income certificates to the Student Welfare Section for scholarship disbursement.',
-    location: 'Student Affairs Window 3',
-    organizer: 'Scholarship & Welfare Section',
-    status: 'PUBLISHED',
-    createdAt: '2026-10-01T09:00:00.000Z',
-  },
-];
 
 function getLocalEvents(): CampusCalendarEvent[] {
   try {
@@ -103,7 +42,7 @@ function getLocalEvents(): CampusCalendarEvent[] {
   } catch {
     // ignore
   }
-  return INITIAL_EVENTS;
+  return [];
 }
 
 function saveLocalEvents(events: CampusCalendarEvent[]) {

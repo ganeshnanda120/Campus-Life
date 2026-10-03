@@ -17,9 +17,9 @@ import {
   updateDoc
 } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from './config';
-import type { UserRecord, UserPermission, StudentCategory } from '../types';
+import type { UserRecord, UserPermission } from '../types';
 
-// Pre-seeded authorized accounts for testing all scenarios required by Section 30
+// Sole provisioned MAIN_ADMIN account (Strict No Demo Users)
 export const INITIAL_DEMO_USERS: UserRecord[] = [
   {
     uid: '08uaC8idQOa0H05njEK8WC8Jakn1',
@@ -34,117 +34,6 @@ export const INITIAL_DEMO_USERS: UserRecord[] = [
     emailVerified: true,
     createdAt: '2026-10-03T14:28:00.000Z',
     updatedAt: '2026-10-03T14:28:00.000Z',
-  },
-  {
-    uid: 'admin_uid_001',
-    email: 'admin@campuslife.edu',
-    role: 'MAIN_ADMIN',
-    name: 'Chief Administrative Officer',
-    department: 'University Administration',
-    isActivated: true,
-    isActive: true,
-    emailVerified: true,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-  },
-  {
-    uid: 'subadmin_uid_001',
-    email: 'subadmin@campuslife.edu',
-    role: 'SUB_ADMIN',
-    name: 'Prof. Rajesh Swain',
-    department: 'Hostel Operations',
-    designation: 'Boys Hostel Warden',
-    permissions: ['MANAGE_HOSTEL', 'MANAGE_GATE_PASS', 'MANAGE_COMPLAINTS'] as UserPermission[],
-    isActivated: true,
-    isActive: true,
-    emailVerified: true,
-    createdAt: '2026-01-05T00:00:00.000Z',
-    updatedAt: '2026-01-05T00:00:00.000Z',
-  },
-  {
-    uid: 'faculty_uid_001',
-    email: 'faculty@campuslife.edu',
-    role: 'FACULTY',
-    name: 'Dr. Sanjeev Mohanty',
-    department: 'Computer Science & Engineering',
-    designation: 'Professor & HOD',
-    isActivated: true,
-    isActive: true,
-    emailVerified: true,
-    createdAt: '2026-01-10T00:00:00.000Z',
-    updatedAt: '2026-01-10T00:00:00.000Z',
-  },
-  {
-    uid: 'staff_uid_001',
-    email: 'staff@campuslife.edu',
-    role: 'STAFF',
-    name: 'Mr. Binod Rout',
-    department: 'Estate & Maintenance',
-    designation: 'Chief Maintenance Supervisor',
-    isActivated: true,
-    isActive: true,
-    emailVerified: true,
-    createdAt: '2026-01-15T00:00:00.000Z',
-    updatedAt: '2026-01-15T00:00:00.000Z',
-  },
-  {
-    uid: 'student_uid_001',
-    email: 'student@campuslife.edu',
-    role: 'STUDENT',
-    name: 'Aarav Sharma',
-    studentId: 'STU2026001',
-    rollNumber: '220101001',
-    department: 'Computer Science & Engineering',
-    branch: 'CSE',
-    year: 3,
-    semester: 6,
-    studentCategory: 'HOSTELER' as StudentCategory,
-    hostelName: 'BPUT Central Hostel',
-    hostelBlock: 'Block A',
-    roomNumber: '204',
-    phone: '+91 98765 43210',
-    isActivated: true,
-    isActive: true,
-    emailVerified: true,
-    createdAt: '2026-02-01T00:00:00.000Z',
-    updatedAt: '2026-02-01T00:00:00.000Z',
-  },
-  {
-    uid: 'student_uid_new',
-    email: 'new.student@campuslife.edu',
-    role: 'STUDENT',
-    name: 'Priyanka Patel',
-    studentId: 'STU2026002',
-    rollNumber: '220101002',
-    department: 'Electrical Engineering',
-    branch: 'EE',
-    year: 2,
-    semester: 4,
-    studentCategory: 'DAY_SCHOLAR' as StudentCategory,
-    phone: '+91 98765 43211',
-    isActivated: false, // Testing first-time activation flow (Section 6 & 9)
-    isActive: true,
-    emailVerified: false,
-    createdAt: '2026-03-01T00:00:00.000Z',
-    updatedAt: '2026-03-01T00:00:00.000Z',
-  },
-  {
-    uid: 'student_uid_inactive',
-    email: 'inactive.student@campuslife.edu',
-    role: 'STUDENT',
-    name: 'Rohan Verma',
-    studentId: 'STU2026003',
-    rollNumber: '220101003',
-    department: 'Mechanical Engineering',
-    branch: 'ME',
-    year: 4,
-    semester: 8,
-    studentCategory: 'HOSTELER' as StudentCategory,
-    isActivated: true,
-    isActive: false, // Testing inactive account flow (Section 8)
-    emailVerified: true,
-    createdAt: '2026-02-15T00:00:00.000Z',
-    updatedAt: '2026-02-15T00:00:00.000Z',
   }
 ];
 
@@ -190,17 +79,13 @@ export function getLocalUsers(): UserRecord[] {
   try {
     const raw = safeStorage.getItem('campus_life_authorized_users');
     if (raw) {
-      const parsed = JSON.parse(raw) as UserRecord[];
-      let changed = false;
-      for (const demoUser of INITIAL_DEMO_USERS) {
-        if (!parsed.some((u) => u.email.toLowerCase() === demoUser.email.toLowerCase())) {
-          parsed.unshift(demoUser);
-          changed = true;
-        }
+      let parsed = JSON.parse(raw) as UserRecord[];
+      // Purge any legacy demo users ending in @campuslife.edu
+      parsed = parsed.filter((u) => !u.email.endsWith('@campuslife.edu'));
+      if (!parsed.some((u) => u.email.toLowerCase() === INITIAL_DEMO_USERS[0].email.toLowerCase())) {
+        parsed.unshift(INITIAL_DEMO_USERS[0]);
       }
-      if (changed) {
-        safeStorage.setItem('campus_life_authorized_users', JSON.stringify(parsed));
-      }
+      safeStorage.setItem('campus_life_authorized_users', JSON.stringify(parsed));
       return parsed;
     }
   } catch {
@@ -423,26 +308,14 @@ export const authService = {
         await signInWithEmailAndPassword(auth, cleanEmail, password);
         return { success: true, user: authCheck.user };
       } catch (err: any) {
-        const savedPassword = safeStorage.getItem(`campus_life_pwd_${cleanEmail}`);
-        const validPassword = savedPassword || (cleanEmail.startsWith('admin') ? 'Admin123' : 'Campus2026');
-        if (password === validPassword) {
-          return { success: true, user: authCheck.user };
-        }
         return { success: false, error: mapFirebaseAuthError(err.code || err.message) };
       }
     }
 
-    const savedPassword = safeStorage.getItem(`campus_life_pwd_${cleanEmail}`);
-    const validPassword = savedPassword || 'Campus2026';
-
-    if (password !== validPassword && password !== 'Admin123' && password !== 'Campus2026') {
-      return {
-        success: false,
-        error: 'Incorrect password. Please verify your credentials and try again.',
-      };
-    }
-
-    return { success: true, user: authCheck.user };
+    return {
+      success: false,
+      error: 'Authentication service unavailable. Please check your network connection.',
+    };
   },
 
   async sendPasswordResetEmail(email: string): Promise<{ success: boolean; error?: string }> {

@@ -12,30 +12,7 @@ function getLocalAuditLogs(): AuditLog[] {
   } catch {
     // ignore
   }
-  return [
-    {
-      id: 'log_init_001',
-      actorId: 'admin_uid_001',
-      actorName: 'Chief Administrative Officer',
-      actorRole: 'MAIN_ADMIN',
-      action: 'CREATE_USER',
-      entityType: 'STUDENT',
-      entityId: 'STU2026001',
-      timestamp: '2026-02-01T10:00:00.000Z',
-      changes: 'Created student record: Aarav Sharma (Hosteler, CSE 3rd Year)',
-    },
-    {
-      id: 'log_init_002',
-      actorId: 'admin_uid_001',
-      actorName: 'Chief Administrative Officer',
-      actorRole: 'MAIN_ADMIN',
-      action: 'ASSIGN_PERMISSION',
-      entityType: 'SUB_ADMIN',
-      entityId: 'subadmin_uid_001',
-      timestamp: '2026-02-05T14:30:00.000Z',
-      changes: 'Assigned permissions: MANAGE_HOSTEL, MANAGE_GATE_PASS, MANAGE_COMPLAINTS',
-    }
-  ];
+  return [];
 }
 
 function saveLocalAuditLog(log: AuditLog) {

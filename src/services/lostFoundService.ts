@@ -34,66 +34,6 @@ if (typeof window !== 'undefined') {
   });
 }
 
-const INITIAL_ITEMS: LostFoundListing[] = [
-  {
-    id: 'lf_001',
-    type: 'FOUND',
-    title: 'Scientific Calculator (Casio fx-991EX ClassWiz)',
-    description: 'Found on the 3rd row desk of Seminar Hall 2 following the Computer Networks morning lecture. Has a white protective case.',
-    category: 'Electronics',
-    location: 'Seminar Hall 2, Dept of CSE',
-    date: '2026-10-03',
-    contactInfo: 'Deposited with Security Post 1 / Contact Estate Desk',
-    status: 'OPEN',
-    submittedBy: 'student_uid_001',
-    submittedByName: 'Aarav Sharma',
-    createdAt: '2026-10-03T11:00:00.000Z',
-  },
-  {
-    id: 'lf_002',
-    type: 'LOST',
-    title: 'Blue Water Bottle (Milton Thermosteel 1000ml)',
-    description: 'Misplaced in Central Library 2nd floor reading hall near Section B reference shelves. Features university robotics club sticker.',
-    category: 'Personal Belongings',
-    location: 'Central Library, 2nd Floor',
-    date: '2026-10-02',
-    contactInfo: 'Library Help Desk or message Aarav Sharma',
-    status: 'OPEN',
-    submittedBy: 'student_uid_001',
-    submittedByName: 'Aarav Sharma',
-    createdAt: '2026-10-02T16:30:00.000Z',
-  },
-  {
-    id: 'lf_003',
-    type: 'FOUND',
-    title: 'Boat Rockerz Wireless Earbuds Case',
-    description: 'Found on bench near Hostel Block B cafeteria walkway around 08:30 PM. Case is black with small scratch on hinge.',
-    category: 'Electronics',
-    location: 'Hostel Block B Pathway',
-    date: '2026-10-01',
-    contactInfo: 'Available with Hostel B Caretaker Office',
-    status: 'CLAIM_PENDING',
-    submittedBy: 'staff_uid_001',
-    submittedByName: 'Estate Supervisor',
-    createdAt: '2026-10-01T21:00:00.000Z',
-  },
-  {
-    id: 'lf_004',
-    type: 'FOUND',
-    title: 'College ID Card & Metro Pass Holder',
-    description: 'Recovered outside Main Auditorium steps during orientation program. Contains identity card belonging to Mechanical Engineering student.',
-    category: 'Documents & Cards',
-    location: 'Main Auditorium Steps',
-    date: '2026-09-29',
-    contactInfo: 'Security Control Room, Gate 1',
-    status: 'CLAIMED',
-    submittedBy: 'staff_uid_001',
-    submittedByName: 'Chief Security Officer',
-    claimedBy: 'student_uid_005',
-    claimedByName: 'Rohan Verma',
-    createdAt: '2026-09-29T14:15:00.000Z',
-  },
-];
 
 function getLocalItems(): LostFoundListing[] {
   try {
@@ -102,7 +42,7 @@ function getLocalItems(): LostFoundListing[] {
   } catch {
     // ignore
   }
-  return INITIAL_ITEMS;
+  return [];
 }
 
 function saveLocalItems(items: LostFoundListing[]) {

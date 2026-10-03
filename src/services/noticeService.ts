@@ -40,88 +40,6 @@ if (typeof window !== 'undefined') {
   });
 }
 
-const INITIAL_NOTICES: Notice[] = [
-  {
-    id: 'notice_emg_001',
-    title: 'EMERGENCY: Heavy Rainfall Alert & Campus Operations Advisory',
-    description: 'Due to severe cyclone alert by IMD and state disaster management authority, all offline laboratory sessions and evening library hours are suspended for Oct 03–04, 2026. Students residing in low-lying hostel blocks are advised to follow safety protocols. Emergency power backups are active.',
-    category: 'Emergency',
-    priority: 'EMERGENCY',
-    publishDate: '2026-10-03T08:00:00.000Z',
-    targetAudience: { all: true },
-    requiresAcknowledgement: true,
-    createdBy: 'admin_uid_001',
-    createdByName: 'Dr. Debabrata Roy (Registrar)',
-    status: 'PUBLISHED',
-    readCount: 1420,
-    acknowledgedCount: 1210,
-    createdAt: '2026-10-03T08:00:00.000Z',
-  },
-  {
-    id: 'notice_exam_002',
-    title: 'BPUT End-Semester Examination Registration Schedule 2026',
-    description: 'All 3rd, 5th, and 7th semester B.Tech and M.Tech regular students are hereby notified that online form fill-up commences on Oct 05, 2026. Submit requisite exam fees through the ERP portal before the deadline. Strict debarment rules apply for shortage of 75% biometric attendance.',
-    category: 'Examination',
-    priority: 'URGENT',
-    publishDate: '2026-10-02T10:30:00.000Z',
-    expiryDate: '2026-10-18T23:59:59.000Z',
-    targetAudience: {
-      roles: ['STUDENT'],
-      departments: ['Computer Science & Engineering', 'Electrical Engineering', 'Mechanical Engineering', 'Civil Engineering'],
-      years: [2, 3, 4],
-    },
-    requiresAcknowledgement: true,
-    attachments: [
-      {
-        name: 'bput_exam_circular_2026.pdf',
-        url: '#',
-        type: 'application/pdf',
-        size: 1024 * 512,
-      },
-    ],
-    createdBy: 'admin_uid_001',
-    createdByName: 'Controller of Examinations',
-    status: 'PUBLISHED',
-    readCount: 980,
-    acknowledgedCount: 740,
-    createdAt: '2026-10-02T10:30:00.000Z',
-  },
-  {
-    id: 'notice_hostel_003',
-    title: 'Hostel Maintenance & Electrical Safety Audit',
-    description: 'The estate management division will conduct routine high-voltage electrical safety checks in Hostel Blocks A, B, and C on Saturday between 10:00 AM and 02:00 PM. High power heating appliances (immersion rods, induction plates) remain strictly prohibited as per university safety guidelines.',
-    category: 'Hostel',
-    priority: 'IMPORTANT',
-    publishDate: '2026-10-01T14:00:00.000Z',
-    targetAudience: {
-      studentCategories: ['HOSTELER'],
-      hostels: ['Hostel Block A', 'Hostel Block B', 'Hostel Block C'],
-    },
-    requiresAcknowledgement: false,
-    createdBy: 'subadmin_uid_002',
-    createdByName: 'Chief Warden Office',
-    status: 'PUBLISHED',
-    readCount: 650,
-    acknowledgedCount: 0,
-    createdAt: '2026-10-01T14:00:00.000Z',
-  },
-  {
-    id: 'notice_acad_004',
-    title: 'Annual BPUT Inter-College Technical Hackathon Registration',
-    description: 'Registrations are officially open for the flagship university hackathon. Teams comprising 3 to 4 students from any branch or semester can register their problem statement track before October 20, 2026. Grand cash prizes and incubation support will be awarded.',
-    category: 'Events',
-    priority: 'NORMAL',
-    publishDate: '2026-09-28T09:00:00.000Z',
-    targetAudience: { all: true },
-    requiresAcknowledgement: false,
-    createdBy: 'admin_uid_001',
-    createdByName: 'Dean (Student Affairs)',
-    status: 'PUBLISHED',
-    readCount: 1850,
-    acknowledgedCount: 0,
-    createdAt: '2026-09-28T09:00:00.000Z',
-  },
-];
 
 function getLocalNotices(): Notice[] {
   try {
@@ -130,7 +48,7 @@ function getLocalNotices(): Notice[] {
   } catch {
     // ignore
   }
-  return INITIAL_NOTICES;
+  return [];
 }
 
 function saveLocalNotices(notices: Notice[]) {

@@ -57,39 +57,6 @@ export const DEFAULT_SUBJECTS: { code: string; name: string; faculty: string }[]
   { code: 'CS305', name: 'Software Engineering & Agile', faculty: 'Prof. S. R. Sahoo' },
 ];
 
-function generateSeedAttendanceRecords(): AttendanceRecord[] {
-  const records: AttendanceRecord[] = [];
-  const subjects = DEFAULT_SUBJECTS;
-  const studentId = 'STU2026001';
-  const studentName = 'Aarav Sharma';
-
-  // Seed last 20 days of classes
-  const today = new Date();
-  for (let i = 25; i >= 1; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    // Skip Sundays
-    if (d.getDay() === 0) continue;
-
-    const dateStr = d.toISOString().split('T')[0];
-    subjects.forEach((subj, idx) => {
-      // Create realistic attendance pattern (>80% present)
-      const isPresent = (i + idx) % 7 !== 0;
-      records.push({
-        id: `att_${studentId}_${subj.code}_${dateStr}`,
-        studentId,
-        studentName,
-        subjectCode: subj.code,
-        subjectName: subj.name,
-        facultyName: subj.faculty,
-        date: dateStr,
-        status: isPresent ? 'PRESENT' : 'ABSENT',
-      });
-    });
-  }
-  return records;
-}
-
 function getLocalAttendance(): AttendanceRecord[] {
   try {
     const raw = safeStorage.getItem(ATTENDANCE_STORAGE_KEY);
@@ -97,13 +64,7 @@ function getLocalAttendance(): AttendanceRecord[] {
   } catch {
     // ignore
   }
-  const seeded = generateSeedAttendanceRecords();
-  try {
-    safeStorage.setItem(ATTENDANCE_STORAGE_KEY, JSON.stringify(seeded));
-  } catch {
-    // ignore
-  }
-  return seeded;
+  return [];
 }
 
 function saveLocalAttendance(records: AttendanceRecord[]) {

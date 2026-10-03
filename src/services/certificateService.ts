@@ -13,46 +13,6 @@ import type { Certificate } from '../types';
 
 const CERTIFICATE_STORAGE_KEY = 'campus_life_certificates';
 
-const INITIAL_CERTIFICATES: Certificate[] = [
-  {
-    id: 'cert_001',
-    certificateId: 'CERT-2026-0042',
-    requestId: 'REQ-2026-001',
-    studentId: 'STU2026001',
-    studentName: 'Aarav Sharma',
-    studentRoll: '220101001',
-    department: 'Computer Science & Engineering',
-    branch: 'CSE',
-    year: 3,
-    semester: 6,
-    certificateType: 'Bonafide Certificate',
-    issueDate: '2026-02-10T10:00:00.000Z',
-    issuedBy: 'Prof. Rajesh Swain',
-    issuedByRole: 'SUB_ADMIN',
-    purpose: 'State Post-Matric Merit Scholarship Application',
-    status: 'ACTIVE',
-    institutionName: 'Biju Patnaik University of Technology — Campus Life',
-  },
-  {
-    id: 'cert_002',
-    certificateId: 'CERT-2026-0078',
-    requestId: 'REQ-2026-004',
-    studentId: 'STU2026001',
-    studentName: 'Aarav Sharma',
-    studentRoll: '220101001',
-    department: 'Computer Science & Engineering',
-    branch: 'CSE',
-    year: 3,
-    semester: 6,
-    certificateType: 'Study & Conduct Certificate',
-    issueDate: '2026-01-20T14:30:00.000Z',
-    issuedBy: 'Chief Administrative Officer',
-    issuedByRole: 'MAIN_ADMIN',
-    purpose: 'National Bank Educational Loan Verification',
-    status: 'ACTIVE',
-    institutionName: 'Biju Patnaik University of Technology — Campus Life',
-  }
-];
 
 function getLocalCertificates(): Certificate[] {
   try {
@@ -61,12 +21,7 @@ function getLocalCertificates(): Certificate[] {
   } catch {
     // ignore
   }
-  try {
-    safeStorage.setItem(CERTIFICATE_STORAGE_KEY, JSON.stringify(INITIAL_CERTIFICATES));
-  } catch {
-    // ignore
-  }
-  return INITIAL_CERTIFICATES;
+  return [];
 }
 
 function saveLocalCertificates(certs: Certificate[]) {
