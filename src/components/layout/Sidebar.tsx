@@ -23,7 +23,9 @@ import {
   Vote,
   Compass
 } from 'lucide-react';
-import type { UserRole } from '../../types';
+import type { UserRole, UserPermission } from '../../types';
+import { useAuth } from '../../context/useAuth';
+import { hasPermission } from '../../services/permissionService';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -36,6 +38,7 @@ interface NavItemConfig {
   to: string;
   icon: React.ReactNode;
   roles?: UserRole[];
+  permission?: UserPermission;
   badge?: string | number;
 }
 
@@ -49,6 +52,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onClose,
   userRole = 'MAIN_ADMIN',
 }) => {
+  const { role: authRole, permissions: authPermissions } = useAuth();
+  const effectiveRole = authRole || userRole;
+  const effectivePermissions = authPermissions || [];
+
   const navGroups: NavGroupConfig[] = [
     {
       title: 'Core Operations',
@@ -83,11 +90,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'Administration',
       items: [
-        { label: 'Student Management', to: '/admin/students', icon: <Users size={18} />, roles: ['MAIN_ADMIN', 'SUB_ADMIN'] },
-        { label: 'Faculty & Staff', to: '/admin/faculty', icon: <UserCheck size={18} />, roles: ['MAIN_ADMIN', 'SUB_ADMIN'] },
-        { label: 'Sub-Admins & Roles', to: '/admin/sub-admins', icon: <ShieldAlert size={18} />, roles: ['MAIN_ADMIN', 'SUB_ADMIN'] },
-        { label: 'Operational Analytics', to: '/admin/reports', icon: <BarChart3 size={18} />, roles: ['MAIN_ADMIN', 'SUB_ADMIN'] },
-        { label: 'Audit Trail Logs', to: '/admin/audit-logs', icon: <History size={18} />, roles: ['MAIN_ADMIN', 'SUB_ADMIN'] },
+        { label: 'Student Management', to: '/admin/students', icon: <Users size={18} />, permission: 'MANAGE_STUDENTS' },
+        { label: 'Faculty & Staff', to: '/admin/faculty', icon: <UserCheck size={18} />, permission: 'MANAGE_FACULTY' },
+        { label: 'Sub-Admins & Roles', to: '/admin/sub-admins', icon: <ShieldAlert size={18} />, permission: 'MANAGE_SUB_ADMINS' },
+        { label: 'Operational Analytics', to: '/admin/reports', icon: <BarChart3 size={18} />, permission: 'VIEW_REPORTS' },
+        { label: 'Audit Trail Logs', to: '/admin/audit-logs', icon: <History size={18} />, permission: 'VIEW_AUDIT_LOGS' },
       ],
     },
   ];
@@ -127,8 +134,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <nav className="sidebar-nav flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300">
           {navGroups.map((group) => {
             const visibleItems = group.items.filter((item) => {
+              if (item.permission) {
+                if (effectiveRole === 'MAIN_ADMIN') return true;
+                return hasPermission(effectiveRole, effectivePermissions, item.permission);
+              }
               if (!item.roles) return true;
-              return item.roles.includes(userRole);
+              return item.roles.includes(effectiveRole);
             });
 
             if (visibleItems.length === 0) return null;

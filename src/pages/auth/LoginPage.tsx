@@ -143,7 +143,7 @@ export const LoginPage: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '1.5rem',
+        padding: '2rem 1.5rem',
         backgroundColor: 'var(--bg-canvas)',
       }}
     >
@@ -151,32 +151,35 @@ export const LoginPage: React.FC = () => {
         className="card"
         style={{
           width: '100%',
-          maxWidth: '440px',
+          maxWidth: '480px',
           boxShadow: 'var(--shadow-xl)',
+          borderRadius: 'var(--radius-xl, 16px)',
+          border: '1px solid var(--border-default)',
         }}
       >
-        <div className="card-body" style={{ padding: '2rem 1.75rem' }}>
+        <div className="card-body" style={{ padding: '2.5rem 2.25rem' }}>
           {/* Institutional Header (Section 6) */}
-          <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
             <div
               style={{
-                width: 52,
-                height: 52,
-                borderRadius: 'var(--radius-lg)',
+                width: 58,
+                height: 58,
+                borderRadius: 'var(--radius-xl, 16px)',
                 backgroundColor: 'var(--brand-primary)',
                 color: '#ffffff',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: '1rem',
+                marginBottom: '1.15rem',
+                boxShadow: '0 8px 20px rgba(37, 99, 235, 0.25)',
               }}
             >
-              <GraduationCap size={28} />
+              <GraduationCap size={30} />
             </div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 0.25rem 0' }}>
+            <h1 style={{ fontSize: '1.65rem', fontWeight: 700, margin: '0 0 0.35rem 0', color: 'var(--text-primary)' }}>
               Campus Life
             </h1>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0 }}>
               Unified Campus Operations Platform
             </p>
           </div>
@@ -191,7 +194,7 @@ export const LoginPage: React.FC = () => {
           {/* Form Step 1: Email Address (Section 6 & 7) */}
           {step === 'email' ? (
             <form onSubmit={handleEmailSubmit} noValidate>
-              <div className="form-group">
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
                 <label className="form-label" htmlFor="login-email">
                   Email Address
                 </label>
@@ -210,14 +213,14 @@ export const LoginPage: React.FC = () => {
                     required
                     autoFocus
                     disabled={isLoading}
-                    style={{ paddingLeft: '2.5rem' }}
+                    style={{ paddingLeft: '2.75rem', minHeight: '48px', fontSize: '0.95rem' }}
                     aria-describedby={error ? 'email-error' : 'email-hint'}
                   />
                   <Mail
-                    size={18}
+                    size={19}
                     style={{
                       position: 'absolute',
-                      left: '0.85rem',
+                      left: '0.95rem',
                       top: '50%',
                       transform: 'translateY(-50%)',
                       color: 'var(--text-muted)',
@@ -234,13 +237,14 @@ export const LoginPage: React.FC = () => {
                 </span>
               </div>
 
-              <div style={{ marginTop: '1.5rem' }}>
+              <div style={{ marginTop: '1.75rem' }}>
                 <Button
                   type="submit"
                   variant="primary"
                   fullWidth
                   isLoading={isLoading}
                   rightIcon={<ArrowRight size={16} />}
+                  style={{ minHeight: '48px', fontSize: '1rem', fontWeight: 600 }}
                 >
                   {isLoading ? loadingText || 'Checking email...' : 'Next'}
                 </Button>
@@ -251,14 +255,14 @@ export const LoginPage: React.FC = () => {
             <form onSubmit={handlePasswordSubmit} noValidate>
               <div
                 style={{
-                  marginBottom: '1.25rem',
-                  padding: '0.75rem',
-                  borderRadius: 'var(--radius-md)',
+                  marginBottom: '1.5rem',
+                  padding: '1.1rem 1.25rem',
+                  borderRadius: 'var(--radius-lg)',
                   backgroundColor: 'var(--bg-subtle)',
                   border: '1px solid var(--border-subtle)',
                 }}
               >
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>
                   Signing In As
                 </span>
                 <div
@@ -266,20 +270,31 @@ export const LoginPage: React.FC = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    marginTop: '0.25rem',
+                    marginTop: '0.4rem',
+                    gap: '0.75rem',
                   }}
                 >
-                  <span className="truncate-safe" style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                  <span className="truncate-safe" style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
                     {email}
                   </span>
                   <button
                     type="button"
-                    className="btn-ghost"
-                    style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}
                     onClick={() => {
                       setStep('email');
                       setPassword('');
                       setError('');
+                    }}
+                    style={{
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      padding: '0.35rem 0.85rem',
+                      borderRadius: 'var(--radius-full)',
+                      border: '1px solid var(--border-default)',
+                      backgroundColor: 'var(--bg-surface)',
+                      color: 'var(--brand-primary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      flexShrink: 0,
                     }}
                   >
                     Change
@@ -287,8 +302,8 @@ export const LoginPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="form-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
                   <label className="form-label" htmlFor="login-password" style={{ margin: 0 }}>
                     Enter Password
                   </label>
@@ -296,7 +311,7 @@ export const LoginPage: React.FC = () => {
                   <button
                     type="button"
                     className="btn-ghost"
-                    style={{ fontSize: '0.8rem', padding: 0, color: 'var(--brand-primary)' }}
+                    style={{ fontSize: '0.825rem', padding: '0.2rem 0.4rem', color: 'var(--brand-primary)', fontWeight: 500 }}
                     onClick={() => {
                       setResetEmail(email);
                       setResetSent(false);
@@ -307,7 +322,7 @@ export const LoginPage: React.FC = () => {
                   </button>
                 </div>
 
-                <div style={{ position: 'relative', marginTop: '0.35rem' }}>
+                <div style={{ position: 'relative' }}>
                   <input
                     id="login-password"
                     type={showPassword ? 'text' : 'password'}
@@ -321,13 +336,13 @@ export const LoginPage: React.FC = () => {
                     required
                     autoFocus
                     disabled={isLoading}
-                    style={{ paddingLeft: '2.5rem', paddingRight: '2.5rem' }}
+                    style={{ paddingLeft: '2.75rem', paddingRight: '2.85rem', minHeight: '48px', fontSize: '0.95rem' }}
                   />
                   <Lock
-                    size={18}
+                    size={19}
                     style={{
                       position: 'absolute',
-                      left: '0.85rem',
+                      left: '0.95rem',
                       top: '50%',
                       transform: 'translateY(-50%)',
                       color: 'var(--text-muted)',
@@ -345,26 +360,28 @@ export const LoginPage: React.FC = () => {
                       transform: 'translateY(-50%)',
                       background: 'none',
                       border: 'none',
-                      padding: '0.25rem',
+                      padding: '0.35rem',
                       cursor: 'pointer',
                       color: 'var(--text-muted)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      borderRadius: 'var(--radius-sm)',
                     }}
                   >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
                   </button>
                 </div>
                 {error && <span className="form-error">{error}</span>}
               </div>
 
-              <div style={{ marginTop: '1.5rem' }}>
+              <div style={{ marginTop: '1.75rem' }}>
                 <Button
                   type="submit"
                   variant="primary"
                   fullWidth
                   isLoading={isLoading}
+                  style={{ minHeight: '48px', fontSize: '1rem', fontWeight: 600 }}
                 >
                   {isLoading ? loadingText || 'Signing in...' : 'Login'}
                 </Button>

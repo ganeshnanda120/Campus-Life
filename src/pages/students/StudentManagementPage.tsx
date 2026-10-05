@@ -25,9 +25,9 @@ import { useAuth } from '../../context/useAuth';
 import { userService } from '../../services/userService';
 import {
   degreeProgramService,
+  subscribeDegrees,
   getAvailableYears,
   getAvailableSemesters,
-  DEFAULT_DEGREES,
 } from '../../services/degreeProgramService';
 import {
   formConfigService,
@@ -36,6 +36,8 @@ import {
 import { CustomFieldsRenderer } from '../../components/common/CustomFieldsRenderer';
 import { FormFieldConfigModal } from '../../components/common/FormFieldConfigModal';
 import { AddCustomFieldModal } from '../../components/common/AddCustomFieldModal';
+import { DegreeBranchManagerModal } from '../../components/common/DegreeBranchManagerModal';
+import { hasPermission } from '../../services/permissionService';
 import type {
   UserRecord,
   StudentCategory,
@@ -44,7 +46,7 @@ import type {
 } from '../../types';
 
 export const StudentManagementPage: React.FC = () => {
-  const { userProfile, role } = useAuth();
+  const { userProfile, role, permissions } = useAuth();
   const searchInputId = useId();
 
   // Data & Query States
@@ -65,7 +67,8 @@ export const StudentManagementPage: React.FC = () => {
   });
 
   // Dynamic Degree/Program System
-  const [degrees, setDegrees] = useState<DegreeProgram[]>(DEFAULT_DEGREES);
+  const [degrees, setDegrees] = useState<DegreeProgram[]>([]);
+  const [isManageDegreesModalOpen, setIsManageDegreesModalOpen] = useState(false);
   const [isAddDegreeModalOpen, setIsAddDegreeModalOpen] = useState(false);
   const [degreeFormName, setDegreeFormName] = useState('');
   const [durationOption, setDurationOption] = useState<'1' | '2' | '3' | '4' | '5' | 'custom'>('4');
@@ -107,9 +110,9 @@ export const StudentManagementPage: React.FC = () => {
     email: '',
     studentId: '',
     rollNumber: '',
-    degree: 'B.Tech',
-    department: 'B.Tech',
-    branch: 'Computer Science & Engineering',
+    degree: '',
+    department: '',
+    branch: '',
     year: 1,
     semester: 1,
     studentCategory: 'HOSTELER' as StudentCategory,
@@ -177,38 +180,36 @@ export const StudentManagementPage: React.FC = () => {
     });
   };
 
-  // Load dynamic degree configurations
-  const loadDegrees = useCallback(async () => {
-    try {
-      const data = await degreeProgramService.getDegrees();
-      if (data && data.length > 0) {
-        setDegrees(data);
-      }
-    } catch (err) {
-      console.warn('Failed to load degrees:', err);
-    }
+  // Load dynamic degree configurations & subscribe to realtime updates
+  useEffect(() => {
+    const unsub = subscribeDegrees((list) => {
+      setDegrees(list || []);
+    });
+    return () => unsub();
   }, []);
 
-  useEffect(() => {
-    loadDegrees();
-  }, [loadDegrees]);
-
-  const canManageAcademic = role === 'MAIN_ADMIN' || role === 'SUB_ADMIN';
+  const canManageAcademic = hasPermission(role, permissions, 'MANAGE_STUDENTS');
 
   // Compute active degree branches and allowed years/semesters dynamically
   const activeDegree =
-    degrees.find((d) => d.name.toLowerCase() === (formData.degree || 'b.tech').toLowerCase()) ||
-    degrees[0] ||
-    DEFAULT_DEGREES[0];
+    degrees.find((d) => d.name.toLowerCase() === (formData.degree || '').toLowerCase()) ||
+    degrees[0] || {
+      id: 'default',
+      name: '',
+      durationYears: 4,
+      branches: [],
+      createdAt: '',
+      updatedAt: '',
+    };
   const currentBranches = activeDegree.branches || [];
   const availableYears = getAvailableYears(activeDegree.durationYears);
   const availableSemesters = getAvailableSemesters(activeDegree.durationYears);
 
   // Degree Change Handler: clears invalid branch/year/semesters
   const handleDegreeChange = (newDegreeName: string) => {
-    const deg = degrees.find((d) => d.name === newDegreeName) || DEFAULT_DEGREES[0];
-    const duration = deg.durationYears;
-    const branches = deg.branches || [];
+    const deg = degrees.find((d) => d.name === newDegreeName) || degrees[0];
+    const duration = deg?.durationYears || 4;
+    const branches = deg?.branches || [];
     const maxSemesters = duration * 2;
 
     setFormData((prev) => ({
@@ -302,7 +303,14 @@ export const StudentManagementPage: React.FC = () => {
 
   // Open Add Student Modal
   const handleOpenAddModal = () => {
-    setFormData(initialFormData);
+    const defaultDeg = degrees[0]?.name || '';
+    const defaultBranch = degrees[0]?.branches?.[0] || '';
+    setFormData({
+      ...initialFormData,
+      degree: defaultDeg,
+      department: defaultDeg,
+      branch: defaultBranch,
+    });
     setModalError(null);
     setCustomFieldErrors({});
     setIsAddModalOpen(true);
@@ -311,7 +319,7 @@ export const StudentManagementPage: React.FC = () => {
   // Open Edit Modal
   const handleOpenEditModal = (student: UserRecord) => {
     setSelectedStudent(student);
-    const degreeVal = student.degree || 'B.Tech';
+    const degreeVal = student.degree || student.department || degrees[0]?.name || '';
     const activeDegree = degrees.find((d) => d.name === degreeVal) || degrees[0];
     const branches = activeDegree?.branches || [];
     const branchVal = student.branch && branches.includes(student.branch)
@@ -700,15 +708,24 @@ export const StudentManagementPage: React.FC = () => {
             Centralized student registry, category allocation, status control, and academic records.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
           {canManageAcademic && (
-            <Button
-              variant="outline"
-              leftIcon={<Settings2 size={16} />}
-              onClick={() => setIsFieldConfigModalOpen(true)}
-            >
-              Configure Fields
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                leftIcon={<GraduationCap size={16} />}
+                onClick={() => setIsManageDegreesModalOpen(true)}
+              >
+                Manage Degrees & Branches
+              </Button>
+              <Button
+                variant="outline"
+                leftIcon={<Settings2 size={16} />}
+                onClick={() => setIsFieldConfigModalOpen(true)}
+              >
+                Configure Fields
+              </Button>
+            </>
           )}
           <Button
             id="btn-add-student"
@@ -1032,7 +1049,7 @@ export const StudentManagementPage: React.FC = () => {
                       <td>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main)' }}>
-                            {stu.degree || 'B.Tech'}
+                            {stu.degree || stu.department || '—'}
                           </span>
                           <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                             {stu.branch ? `${stu.branch} • ` : ''}Year {stu.year || '—'} (Sem {stu.semester || '—'})
@@ -1115,7 +1132,7 @@ export const StudentManagementPage: React.FC = () => {
             </div>
 
             {/* Mobile Responsive Cards View */}
-            <div className="show-on-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="show-on-mobile mobile-card-list">
               {students.map((stu) => (
                 <div
                   key={stu.uid}
@@ -1152,7 +1169,7 @@ export const StudentManagementPage: React.FC = () => {
                     </div>
                     <div>
                       <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Degree / Program</span>
-                      <span>{stu.degree || 'B.Tech'} • {stu.branch || '—'} (Year {stu.year || '—'})</span>
+                      <span>{stu.degree || stu.department || '—'} • {stu.branch || '—'} (Year {stu.year || '—'})</span>
                     </div>
                     <div>
                       <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Category</span>
@@ -1367,34 +1384,58 @@ export const StudentManagementPage: React.FC = () => {
                   value={formData.degree}
                   onChange={(e) => handleDegreeChange(e.target.value)}
                 >
+                  {degrees.length === 0 && (
+                    <option value="" disabled>No degrees configured — please add one</option>
+                  )}
                   {degrees.map((d) => (
                     <option key={d.id} value={d.name}>{d.name} ({d.durationYears} Years)</option>
                   ))}
                 </select>
                 {canManageAcademic && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDegreeModalError(null);
-                      setIsAddDegreeModalOpen(true);
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: '4px 0',
-                      color: 'var(--brand-primary, #2563eb)',
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      marginTop: '0.25rem',
-                    }}
-                  >
-                    <Plus size={13} />
-                    <span>Add New Degree</span>
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDegreeModalError(null);
+                        setIsAddDegreeModalOpen(true);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: '4px 0',
+                        color: 'var(--brand-primary, #2563eb)',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                      }}
+                    >
+                      <Plus size={13} />
+                      <span>Add New Degree</span>
+                    </button>
+                    <span style={{ color: '#cbd5e1' }}>•</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsManageDegreesModalOpen(true)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: '4px 0',
+                        color: '#64748b',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                      }}
+                    >
+                      <Settings2 size={13} />
+                      <span>Manage (Edit / Delete)</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1413,31 +1454,55 @@ export const StudentManagementPage: React.FC = () => {
                       <option key={b} value={b}>{b}</option>
                     ))
                   )}
+                  {formData.branch && !currentBranches.includes(formData.branch) && (
+                    <option value={formData.branch}>{formData.branch} (Unlisted / Preserved)</option>
+                  )}
                 </select>
                 {canManageAcademic && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBranchModalError(null);
-                      setIsAddBranchModalOpen(true);
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: '4px 0',
-                      color: 'var(--brand-primary, #2563eb)',
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      marginTop: '0.25rem',
-                    }}
-                  >
-                    <Plus size={13} />
-                    <span>Add New Branch</span>
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBranchModalError(null);
+                        setIsAddBranchModalOpen(true);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: '4px 0',
+                        color: 'var(--brand-primary, #2563eb)',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                      }}
+                    >
+                      <Plus size={13} />
+                      <span>Add New Branch</span>
+                    </button>
+                    <span style={{ color: '#cbd5e1' }}>•</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsManageDegreesModalOpen(true)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: '4px 0',
+                        color: '#64748b',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                      }}
+                    >
+                      <Settings2 size={13} />
+                      <span>Manage Branches</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1675,31 +1740,55 @@ export const StudentManagementPage: React.FC = () => {
                 {degrees.map((d) => (
                   <option key={d.id} value={d.name}>{d.name} ({d.durationYears} Years)</option>
                 ))}
+                {formData.degree && !degrees.some((d) => d.name === formData.degree) && (
+                  <option value={formData.degree}>{formData.degree} (Unlisted / Preserved)</option>
+                )}
               </select>
               {canManageAcademic && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDegreeModalError(null);
-                    setIsAddDegreeModalOpen(true);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: '4px 0',
-                    color: 'var(--brand-primary, #2563eb)',
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    marginTop: '0.25rem',
-                  }}
-                >
-                  <Plus size={13} />
-                  <span>Add New Degree</span>
-                </button>
+                <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDegreeModalError(null);
+                      setIsAddDegreeModalOpen(true);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px 0',
+                      color: 'var(--brand-primary, #2563eb)',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    <Plus size={13} />
+                    <span>Add New Degree</span>
+                  </button>
+                  <span style={{ color: '#cbd5e1' }}>•</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsManageDegreesModalOpen(true)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px 0',
+                      color: '#64748b',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    <Settings2 size={13} />
+                    <span>Manage (Edit / Delete)</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1718,31 +1807,55 @@ export const StudentManagementPage: React.FC = () => {
                     <option key={b} value={b}>{b}</option>
                   ))
                 )}
+                {formData.branch && !currentBranches.includes(formData.branch) && (
+                  <option value={formData.branch}>{formData.branch} (Unlisted / Preserved)</option>
+                )}
               </select>
               {canManageAcademic && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBranchModalError(null);
-                    setIsAddBranchModalOpen(true);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: '4px 0',
-                    color: 'var(--brand-primary, #2563eb)',
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    marginTop: '0.25rem',
-                  }}
-                >
-                  <Plus size={13} />
-                  <span>Add New Branch</span>
-                </button>
+                <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBranchModalError(null);
+                      setIsAddBranchModalOpen(true);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px 0',
+                      color: 'var(--brand-primary, #2563eb)',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    <Plus size={13} />
+                    <span>Add New Branch</span>
+                  </button>
+                  <span style={{ color: '#cbd5e1' }}>•</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsManageDegreesModalOpen(true)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px 0',
+                      color: '#64748b',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    <Settings2 size={13} />
+                    <span>Manage Branches</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -2218,7 +2331,7 @@ export const StudentManagementPage: React.FC = () => {
               Target Degree / Program
             </span>
             <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--color-primary, #2563eb)' }}>
-              {formData.degree || 'B.Tech'}
+              {formData.degree || degrees[0]?.name || '—'}
             </span>
           </div>
 
@@ -2297,6 +2410,22 @@ export const StudentManagementPage: React.FC = () => {
           alert(res.error || 'Failed to add custom field.');
           return false;
         }}
+      />
+
+      {/* ========================================================================= */}
+      {/* DEGREE & BRANCH MANAGER MODAL (EDIT/DELETE + SAFE CASCADE DELETION)        */}
+      {/* ========================================================================= */}
+      <DegreeBranchManagerModal
+        isOpen={isManageDegreesModalOpen}
+        onClose={() => {
+          setIsManageDegreesModalOpen(false);
+          loadStudents();
+          fetchStats();
+        }}
+        currentUserRole={role || undefined}
+        currentUserId={userProfile?.uid}
+        currentUserName={userProfile?.name}
+        initialDegreeName={formData.degree}
       />
     </div>
   );

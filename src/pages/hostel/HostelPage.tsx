@@ -20,6 +20,7 @@ import { Skeleton } from '../../components/common/Skeleton';
 import { useAuth } from '../../context/useAuth';
 import { hostelService } from '../../services/hostelService';
 import { complaintService } from '../../services/complaintService';
+import { hasPermission } from '../../services/permissionService';
 import type {
   HostelRoom,
   HostelAllocation,
@@ -31,10 +32,7 @@ export const HostelPage: React.FC = () => {
   const navigate = useNavigate();
 
   const isDayScholar = userProfile?.studentCategory === 'DAY_SCHOLAR';
-  const isAdminOrStaff =
-    role === 'MAIN_ADMIN' ||
-    (role === 'SUB_ADMIN' && permissions.includes('MANAGE_HOSTEL')) ||
-    role === 'STAFF';
+  const isAdminOrStaff = hasPermission(role, permissions, 'MANAGE_HOSTEL');
 
   const [allocation, setAllocation] = useState<HostelAllocation | null>(null);
   const [roomDetails, setRoomDetails] = useState<HostelRoom | null>(null);
@@ -456,7 +454,7 @@ export const HostelPage: React.FC = () => {
         onClose={() => !isSubmittingMaint && setIsMaintenanceModalOpen(false)}
         title="Hostel Maintenance Request"
         footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', width: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.85rem', width: '100%' }}>
             <Button variant="outline" onClick={() => setIsMaintenanceModalOpen(false)} disabled={isSubmittingMaint}>
               Cancel
             </Button>
@@ -466,14 +464,14 @@ export const HostelPage: React.FC = () => {
           </div>
         }
       >
-        <form onSubmit={handleHostelMaintenance} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <form onSubmit={handleHostelMaintenance} style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }}>
           <Alert variant="info">
             Hostel maintenance grievances are directly routed to the estate & electrical maintenance team through the centralized grievance SLA system.
           </Alert>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-              Location / Room
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="input-label">
+              Location / Room *
             </label>
             <input
               type="text"
@@ -484,8 +482,8 @@ export const HostelPage: React.FC = () => {
             />
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="input-label">
               Maintenance Subject *
             </label>
             <input
@@ -498,16 +496,17 @@ export const HostelPage: React.FC = () => {
             />
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="input-label">
               Description *
             </label>
             <textarea
               className="input-field"
-              rows={3}
+              rows={4}
               placeholder="Provide exact defect symptoms and available hours for maintenance technician access..."
               value={maintDesc}
               onChange={(e) => setMaintDesc(e.target.value)}
+              style={{ minHeight: '105px' }}
               required
             />
           </div>

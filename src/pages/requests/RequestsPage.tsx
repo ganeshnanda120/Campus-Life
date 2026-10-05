@@ -27,15 +27,17 @@ import type {
   Certificate,
   AttachmentFile,
 } from '../../types';
+import { hasPermission } from '../../services/permissionService';
 
 export const RequestsPage: React.FC = () => {
   const { userProfile, role, permissions } = useAuth();
   const searchInputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isAdminOrAuthorized =
-    role === 'MAIN_ADMIN' ||
-    (role === 'SUB_ADMIN' && permissions.includes('MANAGE_REQUESTS'));
+  const canManageRequests = hasPermission(role, permissions, 'MANAGE_REQUESTS');
+  const canApproveRequests = hasPermission(role, permissions, 'APPROVE_REQUESTS');
+  const canManageCertificates = hasPermission(role, permissions, 'MANAGE_CERTIFICATES');
+  const isAdminOrAuthorized = canManageRequests || canApproveRequests || canManageCertificates;
 
   // Active view tab: 'my_requests' for student, 'all_requests' for admin
   const [activeTab, setActiveTab] = useState<'my_requests' | 'all_requests'>(
@@ -233,6 +235,10 @@ export const RequestsPage: React.FC = () => {
 
   // Open Admin Action Modal
   const handleOpenAdminAction = (req: StudentRequest) => {
+    if (!canApproveRequests && !canManageRequests) {
+      alert('Unauthorized: You do not have permission to review or approve student requests.');
+      return;
+    }
     setSelectedRequest(req);
     setActionStatus('APPROVED');
     setActionComment('');
@@ -244,6 +250,10 @@ export const RequestsPage: React.FC = () => {
   const handleSubmitAdminAction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRequest) return;
+    if (!canApproveRequests && !canManageRequests) {
+      alert('Unauthorized: You do not have permission to update or approve student requests.');
+      return;
+    }
 
     setIsProcessingAction(true);
     try {
@@ -586,7 +596,7 @@ export const RequestsPage: React.FC = () => {
             </div>
 
             {/* Mobile Cards */}
-            <div className="show-on-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div className="show-on-mobile mobile-card-list">
               {filteredRequests.map((req) => (
                 <div
                   key={req.id}
@@ -654,14 +664,14 @@ export const RequestsPage: React.FC = () => {
         title="Submit New Request / Certificate"
         size="large"
       >
-        <form onSubmit={handleSubmitCreate} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <form onSubmit={handleSubmitCreate} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {formError && (
             <Alert variant="danger" title="Validation Error">
               {formError}
             </Alert>
           )}
 
-          <div>
+          <div className="form-group" style={{ margin: 0 }}>
             <label className="input-label" htmlFor="req-type">Request Type *</label>
             <select
               id="req-type"
@@ -679,7 +689,7 @@ export const RequestsPage: React.FC = () => {
             </select>
           </div>
 
-          <div>
+          <div className="form-group" style={{ margin: 0 }}>
             <label className="input-label" htmlFor="req-title">Application Subject / Title *</label>
             <input
               id="req-title"
@@ -692,21 +702,22 @@ export const RequestsPage: React.FC = () => {
             />
           </div>
 
-          <div>
+          <div className="form-group" style={{ margin: 0 }}>
             <label className="input-label" htmlFor="req-desc">Purpose & Justification *</label>
             <textarea
               id="req-desc"
               required
               className="input-field"
-              rows={3}
+              rows={4}
               placeholder="Provide context, required submission authority, and relevant details..."
               value={newDesc}
               onChange={(e) => setNewDesc(e.target.value)}
+              style={{ minHeight: '110px' }}
             />
           </div>
 
           {/* Optional Attachment Upload (Section 14 & 32) */}
-          <div>
+          <div className="form-group" style={{ margin: 0 }}>
             <label className="input-label" htmlFor="req-file-input">
               Supporting Documentation (Optional, Max 5MB)
             </label>
@@ -718,7 +729,18 @@ export const RequestsPage: React.FC = () => {
               style={{ display: 'none' }}
               aria-label="Upload supporting document"
             />
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: '1rem',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                padding: '1rem 1.25rem',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: 'var(--bg-subtle)',
+                border: '1px dashed var(--border-default)',
+              }}
+            >
               <Button
                 type="button"
                 variant="outline"
@@ -728,19 +750,19 @@ export const RequestsPage: React.FC = () => {
               >
                 Attach File / Receipt
               </Button>
-              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                PDF, JPG, PNG accepted
+              <span style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>
+                PDF, JPG, PNG accepted (Max 5MB)
               </span>
             </div>
 
             {uploadProgress !== null && (
-              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+              <div style={{ marginTop: '0.5rem', fontSize: '0.825rem', color: 'var(--text-muted)' }}>
                 Attaching file... {uploadProgress}%
               </div>
             )}
 
             {attachedFiles.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
                 {attachedFiles.map((file, idx) => (
                   <div
                     key={file.name}
@@ -748,19 +770,21 @@ export const RequestsPage: React.FC = () => {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      padding: '0.4rem 0.6rem',
-                      backgroundColor: 'var(--color-bg-secondary)',
+                      padding: '0.5rem 0.75rem',
+                      backgroundColor: 'var(--bg-subtle)',
                       borderRadius: 'var(--radius-sm)',
-                      fontSize: '0.8rem',
+                      fontSize: '0.85rem',
+                      border: '1px solid var(--border-subtle)',
                     }}
                   >
                     <span>{file.name} ({Math.round(file.size / 1024)} KB)</span>
                     <button
                       type="button"
                       onClick={() => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
-                      style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer' }}
+                      style={{ background: 'none', border: 'none', color: 'var(--status-danger)', cursor: 'pointer', padding: '0.2rem' }}
+                      aria-label={`Remove file ${file.name}`}
                     >
-                      <X size={14} />
+                      <X size={15} />
                     </button>
                   </div>
                 ))}
@@ -768,7 +792,7 @@ export const RequestsPage: React.FC = () => {
             )}
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.85rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '1.25rem' }}>
             <Button variant="ghost" type="button" onClick={() => setIsCreateModalOpen(false)}>
               Cancel
             </Button>

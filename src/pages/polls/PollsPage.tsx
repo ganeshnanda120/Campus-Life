@@ -8,10 +8,11 @@ import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { useAuth } from '../../context/useAuth';
 import { pollService } from '../../services/pollService';
+import { hasPermission } from '../../services/permissionService';
 import type { CampusPoll } from '../../types';
 
 export const PollsPage: React.FC = () => {
-  const { userProfile, role } = useAuth();
+  const { userProfile, role, permissions } = useAuth();
   const [polls, setPolls] = useState<CampusPoll[]>([]);
   const [loading, setLoading] = useState(true);
   const [votingPollId, setVotingPollId] = useState<string | null>(null);
@@ -28,10 +29,7 @@ export const PollsPage: React.FC = () => {
     options: ['', ''],
   });
 
-  const canManagePolls =
-    role === 'MAIN_ADMIN' ||
-    role === 'SUB_ADMIN' ||
-    userProfile?.permissions?.includes('MANAGE_POLLS');
+  const canManagePolls = hasPermission(role, permissions, 'MANAGE_POLLS');
 
   const loadPolls = useCallback(async () => {
     setLoading(true);
@@ -319,22 +317,23 @@ export const PollsPage: React.FC = () => {
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '580px', width: '92%' }}
+            style={{ maxWidth: '640px', width: '92%' }}
           >
             <div className="modal-header">
-              <h3 style={{ margin: 0 }}>Create Campus Poll</h3>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Create Campus Poll</h3>
               <button
                 type="button"
                 className="btn-ghost btn-icon"
                 onClick={() => setCreateModalOpen(false)}
+                aria-label="Close dialog"
               >
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleCreatePoll}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Poll Title *</label>
                   <input
                     type="text"
@@ -346,19 +345,20 @@ export const PollsPage: React.FC = () => {
                   />
                 </div>
 
-                <div>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Poll Description *</label>
                   <textarea
                     required
-                    rows={2}
+                    rows={3}
                     className="form-input"
                     placeholder="Describe the context or institutional purpose of the poll..."
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    style={{ minHeight: '90px' }}
                   />
                 </div>
 
-                <div>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Voting Deadline Date *</label>
                   <input
                     type="date"
@@ -369,46 +369,25 @@ export const PollsPage: React.FC = () => {
                   />
                 </div>
 
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
                     <label className="form-label" style={{ margin: 0 }}>Poll Choices / Options *</label>
                     {formData.options.length < 6 && (
-                      <button
+                      <Button
                         type="button"
+                        variant="outline"
+                        size="sm"
+                        leftIcon={<Plus size={14} />}
                         onClick={handleAddOption}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.3rem',
-                          padding: '0.3rem 0.75rem',
-                          fontSize: '0.8rem',
-                          fontWeight: 600,
-                          borderRadius: '0.375rem',
-                          color: '#2563eb',
-                          backgroundColor: '#eff6ff',
-                          border: '1px solid #bfdbfe',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#dbeafe';
-                          e.currentTarget.style.borderColor = '#93c5fd';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = '#eff6ff';
-                          e.currentTarget.style.borderColor = '#bfdbfe';
-                        }}
                       >
-                        <Plus size={14} />
-                        <span>Add Choice</span>
-                      </button>
+                        Add Choice
+                      </Button>
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                     {formData.options.map((opt, idx) => (
-                      <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <div key={idx} style={{ display: 'flex', gap: '0.65rem', alignItems: 'center' }}>
                         <input
                           type="text"
                           required
@@ -425,26 +404,18 @@ export const PollsPage: React.FC = () => {
                             aria-label={`Remove option ${idx + 1}`}
                             title="Remove choice"
                             style={{
-                              width: '38px',
-                              height: '38px',
-                              borderRadius: '0.375rem',
-                              border: '1px solid #fee2e2',
-                              backgroundColor: '#fef2f2',
-                              color: '#dc2626',
+                              width: '42px',
+                              height: '42px',
+                              borderRadius: 'var(--radius-md)',
+                              border: '1px solid var(--status-danger-border)',
+                              backgroundColor: 'var(--status-danger-bg)',
+                              color: 'var(--status-danger)',
                               display: 'inline-flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                               cursor: 'pointer',
                               flexShrink: 0,
                               transition: 'all 0.15s ease',
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = '#fee2e2';
-                              e.currentTarget.style.borderColor = '#fca5a5';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = '#fef2f2';
-                              e.currentTarget.style.borderColor = '#fee2e2';
                             }}
                           >
                             <X size={16} />

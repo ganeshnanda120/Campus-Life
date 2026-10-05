@@ -570,8 +570,8 @@ export const NoticesPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateNotice}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Notice Title *</label>
                   <input
                     type="text"
@@ -583,8 +583,8 @@ export const NoticesPage: React.FC = () => {
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                  <div>
+                <div className="form-grid-2">
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Category</label>
                     <select
                       className="form-input"
@@ -606,7 +606,7 @@ export const NoticesPage: React.FC = () => {
                     </select>
                   </div>
 
-                  <div>
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Priority Level *</label>
                     <select
                       className="form-input"
@@ -621,7 +621,7 @@ export const NoticesPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Full Circular Description *</label>
                   <textarea
                     required
@@ -630,64 +630,64 @@ export const NoticesPage: React.FC = () => {
                     placeholder="Enter complete circular text, instructions, and deadlines..."
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    style={{ minHeight: '110px' }}
                   />
                 </div>
 
                 {/* Target Audience Controls (Section 5) */}
                 <div
                   style={{
-                    padding: '0.85rem',
-                    borderRadius: 'var(--radius-md)',
+                    padding: '1.15rem 1.25rem',
+                    borderRadius: 'var(--radius-lg)',
                     border: '1px solid var(--border-default)',
                     backgroundColor: 'var(--bg-subtle)',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '0.65rem',
+                    gap: '0.85rem',
                   }}
                 >
-                  <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>Audience Targeting</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>Audience Targeting</div>
 
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.875rem', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
                       checked={formData.targetAll}
                       onChange={(e) => setFormData({ ...formData, targetAll: e.target.checked })}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--brand-primary)' }}
                     />
                     <span>Broadcast to Everyone (All Students, Faculty & Staff)</span>
                   </label>
 
                   {!formData.targetAll && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.25rem' }}>
-                      <div>
-                        <label className="form-label" style={{ fontSize: '0.8rem' }}>Target Student Category</label>
-                        <select
-                          className="form-input"
-                          value={formData.targetStudentCategory}
-                          onChange={(e) => setFormData({ ...formData, targetStudentCategory: e.target.value as any })}
-                          style={{ fontSize: '0.85rem' }}
-                        >
-                          <option value="">Both Hosteler & Day Scholar</option>
-                          <option value="HOSTELER">Hostel Residents Only</option>
-                          <option value="DAY_SCHOLAR">Day Scholars Only</option>
-                        </select>
-                      </div>
+                    <div className="form-group" style={{ margin: 0, marginTop: '0.25rem' }}>
+                      <label className="form-label" style={{ fontSize: '0.825rem' }}>Target Student Category</label>
+                      <select
+                        className="form-input"
+                        value={formData.targetStudentCategory}
+                        onChange={(e) => setFormData({ ...formData, targetStudentCategory: e.target.value as any })}
+                      >
+                        <option value="">Both Hosteler & Day Scholar</option>
+                        <option value="HOSTELER">Hostel Residents Only</option>
+                        <option value="DAY_SCHOLAR">Day Scholars Only</option>
+                      </select>
                     </div>
                   )}
                 </div>
 
                 {/* Attachment & Acknowledge Checkboxes */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.875rem', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
                       checked={formData.requiresAcknowledgement}
                       onChange={(e) => setFormData({ ...formData, requiresAcknowledgement: e.target.checked })}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--brand-primary)' }}
                     />
                     <span><strong>Require Mandatory Acknowledgement</strong> ("I have read and understood")</span>
                   </label>
 
-                  <div>
-                    <label className="form-label" style={{ fontSize: '0.8rem' }}>PDF / Document Attachment Name (Optional)</label>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.85rem' }}>PDF / Document Attachment Name (Optional)</label>
                     <input
                       type="text"
                       className="form-input"

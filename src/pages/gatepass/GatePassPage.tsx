@@ -21,6 +21,7 @@ import { Alert } from '../../components/common/Alert';
 import { Skeleton } from '../../components/common/Skeleton';
 import { useAuth } from '../../context/useAuth';
 import { gatePassService } from '../../services/gatePassService';
+import { hasPermission } from '../../services/permissionService';
 import type {
   GatePass,
   GatePassStatus,
@@ -40,11 +41,10 @@ export const GatePassPage: React.FC = () => {
   const returnTimeId = useId();
   const descId = useId();
 
-  const isWardenOrAdmin =
-    role === 'MAIN_ADMIN' ||
-    (role === 'SUB_ADMIN' && (permissions.includes('MANAGE_GATE_PASS') || permissions.includes('APPROVE_GATE_PASS')));
-
-  const isSecurityOrStaff = role === 'STAFF' || isWardenOrAdmin;
+  const canManageGatePass = hasPermission(role, permissions, 'MANAGE_GATE_PASS');
+  const canApproveGatePass = hasPermission(role, permissions, 'APPROVE_GATE_PASS');
+  const isWardenOrAdmin = canManageGatePass || canApproveGatePass;
+  const isSecurityOrStaff = isWardenOrAdmin;
 
   const [passes, setPasses] = useState<GatePass[]>([]);
   const [visitorLogs, setVisitorLogs] = useState<VisitorExitLog[]>([]);
@@ -192,6 +192,10 @@ export const GatePassPage: React.FC = () => {
 
   // Approve gate pass
   const handleApprove = async (pass: GatePass) => {
+    if (!canApproveGatePass && !canManageGatePass) {
+      alert('Unauthorized: You do not have permission to approve gate passes.');
+      return;
+    }
     try {
       await gatePassService.approvePass(pass.id, {
         approverId: userProfile?.uid || 'admin_001',
@@ -217,6 +221,10 @@ export const GatePassPage: React.FC = () => {
   // Confirm Reject
   const handleConfirmReject = async () => {
     if (!selectedPass) return;
+    if (!canApproveGatePass && !canManageGatePass) {
+      alert('Unauthorized: You do not have permission to reject gate passes.');
+      return;
+    }
     if (!rejectionReason.trim()) {
       alert('Please specify the reason for rejecting this gate pass.');
       return;
@@ -627,7 +635,7 @@ export const GatePassPage: React.FC = () => {
         onClose={() => !isSubmitting && setIsRequestModalOpen(false)}
         title="Apply for Campus Gate Pass"
         footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', width: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.85rem', width: '100%' }}>
             <Button variant="outline" onClick={() => setIsRequestModalOpen(false)} disabled={isSubmitting}>
               Cancel
             </Button>
@@ -637,11 +645,11 @@ export const GatePassPage: React.FC = () => {
           </div>
         }
       >
-        <form onSubmit={handleCreatePass} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <form onSubmit={handleCreatePass} style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }}>
           {formError && <Alert variant="danger">{formError}</Alert>}
 
-          <div>
-            <label htmlFor={destId} style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label htmlFor={destId} className="input-label">
               Destination *
             </label>
             <input
@@ -655,8 +663,8 @@ export const GatePassPage: React.FC = () => {
             />
           </div>
 
-          <div>
-            <label htmlFor={reasonId} style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label htmlFor={reasonId} className="input-label">
               Reason for Leaving Campus *
             </label>
             <input
@@ -670,9 +678,9 @@ export const GatePassPage: React.FC = () => {
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-            <div>
-              <label htmlFor={leaveDateId} style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <div className="form-grid-2">
+            <div className="form-group" style={{ margin: 0 }}>
+              <label htmlFor={leaveDateId} className="input-label">
                 Departure Date *
               </label>
               <input
@@ -684,8 +692,8 @@ export const GatePassPage: React.FC = () => {
                 required
               />
             </div>
-            <div>
-              <label htmlFor={leaveTimeId} style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label htmlFor={leaveTimeId} className="input-label">
                 Departure Time *
               </label>
               <input
@@ -700,8 +708,8 @@ export const GatePassPage: React.FC = () => {
             </div>
           </div>
 
-          <div>
-            <label htmlFor={returnTimeId} style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label htmlFor={returnTimeId} className="input-label">
               Expected Return Date & Time *
             </label>
             <input
@@ -715,17 +723,18 @@ export const GatePassPage: React.FC = () => {
             />
           </div>
 
-          <div>
-            <label htmlFor={descId} style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label htmlFor={descId} className="input-label">
               Additional Information / Travel Tickets
             </label>
             <textarea
               id={descId}
               className="input-field"
-              rows={2}
+              rows={3}
               placeholder="Train ticket PNR, parent confirmation, or contact phone..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              style={{ minHeight: '90px' }}
             />
           </div>
         </form>

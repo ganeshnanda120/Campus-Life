@@ -16,6 +16,7 @@ import { complaintService } from './complaintService';
 import { gatePassService } from './gatePassService';
 import {
   normalizeStudentAcademicRecord,
+  normalizeFacultyAcademicRecord,
   doesDegreeMatch,
   doesBranchMatch,
 } from './degreeProgramService';
@@ -87,7 +88,13 @@ class UserService {
           const list: UserRecord[] = [];
           snapshot.forEach((d) => {
             const raw = d.data() as UserRecord;
-            list.push(raw.role === 'STUDENT' ? normalizeStudentAcademicRecord(raw) : raw);
+            const norm =
+              raw.role === 'STUDENT'
+                ? normalizeStudentAcademicRecord(raw)
+                : raw.role === 'FACULTY'
+                ? normalizeFacultyAcademicRecord(raw)
+                : raw;
+            list.push(norm);
           });
           return list;
         }
@@ -95,7 +102,13 @@ class UserService {
         console.warn('Firestore getAllUsers failed, falling back to local store:', err);
       }
     }
-    return getLocalUsers().map((u) => (u.role === 'STUDENT' ? normalizeStudentAcademicRecord(u) : u));
+    return getLocalUsers().map((u) =>
+      u.role === 'STUDENT'
+        ? normalizeStudentAcademicRecord(u)
+        : u.role === 'FACULTY'
+        ? normalizeFacultyAcademicRecord(u)
+        : u
+    );
   }
 
   /**
@@ -108,7 +121,11 @@ class UserService {
         const snapshot = await getDoc(docRef);
         if (snapshot.exists()) {
           const raw = snapshot.data() as UserRecord;
-          return raw.role === 'STUDENT' ? normalizeStudentAcademicRecord(raw) : raw;
+          return raw.role === 'STUDENT'
+            ? normalizeStudentAcademicRecord(raw)
+            : raw.role === 'FACULTY'
+            ? normalizeFacultyAcademicRecord(raw)
+            : raw;
         }
       } catch (err) {
         console.warn('Firestore getUserById failed, falling back to local store:', err);
@@ -116,7 +133,13 @@ class UserService {
     }
     const all = getLocalUsers();
     const found = all.find((u) => u.uid === uid) || null;
-    return found && found.role === 'STUDENT' ? normalizeStudentAcademicRecord(found) : found;
+    return found
+      ? found.role === 'STUDENT'
+        ? normalizeStudentAcademicRecord(found)
+        : found.role === 'FACULTY'
+        ? normalizeFacultyAcademicRecord(found)
+        : found
+      : null;
   }
 
   /**
@@ -220,7 +243,15 @@ class UserService {
     const degreeOrDept = degree || department;
     if (degreeOrDept && degreeOrDept !== 'ALL') {
       users = users.filter((u) => {
-        if (u.role === 'STUDENT') {
+        if (Array.isArray(u.degreeAssignments) && u.degreeAssignments.length > 0) {
+          const hasDeg = u.degreeAssignments.some(
+            (a) =>
+              a.degreeName.toLowerCase() === degreeOrDept.toLowerCase() ||
+              doesDegreeMatch(a.degreeName, undefined, degreeOrDept)
+          );
+          if (hasDeg) return true;
+        }
+        if (u.role === 'STUDENT' || u.role === 'FACULTY') {
           return doesDegreeMatch(u.degree, u.department, degreeOrDept);
         }
         return u.department && u.department.toLowerCase() === degreeOrDept.toLowerCase();
@@ -230,7 +261,21 @@ class UserService {
     // 4. Branch filter
     if (branch && branch !== 'ALL') {
       users = users.filter((u) => {
-        if (u.role === 'STUDENT') {
+        if (Array.isArray(u.degreeAssignments) && u.degreeAssignments.length > 0) {
+          const hasBr = u.degreeAssignments.some(
+            (a) =>
+              a.branchName.toLowerCase() === branch.toLowerCase() ||
+              doesBranchMatch(a.branchName, undefined, branch)
+          );
+          if (hasBr) return true;
+        }
+        if (Array.isArray(u.specialSessionBranches) && u.specialSessionBranches.length > 0) {
+          const hasSpec = u.specialSessionBranches.some(
+            (s) => s.toLowerCase() === branch.toLowerCase()
+          );
+          if (hasSpec) return true;
+        }
+        if (u.role === 'STUDENT' || u.role === 'FACULTY') {
           return doesBranchMatch(u.branch, u.department, branch);
         }
         return u.branch && u.branch.toLowerCase() === branch.toLowerCase();
@@ -254,10 +299,21 @@ class UserService {
       users = users.filter((u) => u.studentCategory === studentCategory);
     }
 
-    // 8. Search query (matches name, email, studentId, rollNumber, employeeId, degree, department, branch)
+    // 8. Search query (matches name, email, studentId, rollNumber, employeeId, degree, department, branch, degreeAssignments, specialSessionBranches)
     if (searchQuery.trim()) {
       const queryLower = searchQuery.trim().toLowerCase();
       users = users.filter((u) => {
+        const hasAssignmentMatch =
+          Array.isArray(u.degreeAssignments) &&
+          u.degreeAssignments.some(
+            (a) =>
+              a.degreeName.toLowerCase().includes(queryLower) ||
+              a.branchName.toLowerCase().includes(queryLower)
+          );
+        const hasSpecialSessionMatch =
+          Array.isArray(u.specialSessionBranches) &&
+          u.specialSessionBranches.some((s) => s.toLowerCase().includes(queryLower));
+
         return (
           u.name.toLowerCase().includes(queryLower) ||
           u.email.toLowerCase().includes(queryLower) ||
@@ -266,7 +322,9 @@ class UserService {
           (u.employeeId && u.employeeId.toLowerCase().includes(queryLower)) ||
           (u.degree && u.degree.toLowerCase().includes(queryLower)) ||
           (u.department && u.department.toLowerCase().includes(queryLower)) ||
-          (u.branch && u.branch.toLowerCase().includes(queryLower))
+          (u.branch && u.branch.toLowerCase().includes(queryLower)) ||
+          hasAssignmentMatch ||
+          hasSpecialSessionMatch
         );
       });
     }
@@ -557,19 +615,25 @@ class UserService {
   }
 
   /**
-   * Assign or revoke granular permissions for a Sub-Admin.
+   * Assign or revoke granular permissions for SUB_ADMIN, FACULTY, or STAFF.
    */
-  async updateSubAdminPermissions(
+  async updateUserPermissions(
     uid: string,
     permissions: UserPermission[],
     actor: ActorContext
   ): Promise<{ success: boolean; user?: UserRecord; error?: string }> {
     const existing = await this.getUserById(uid);
     if (!existing) {
-      return { success: false, error: 'Sub-Admin record not found.' };
+      return { success: false, error: 'User record not found.' };
     }
-    if (existing.role !== 'SUB_ADMIN') {
-      return { success: false, error: 'Permissions can only be assigned to Sub-Admin accounts.' };
+    if (existing.role === 'MAIN_ADMIN') {
+      return { success: false, error: 'Main Administrator permissions cannot be modified.' };
+    }
+    if (existing.role === 'STUDENT') {
+      return { success: false, error: 'Granular permissions cannot be assigned to student accounts.' };
+    }
+    if (!['SUB_ADMIN', 'FACULTY', 'STAFF'].includes(existing.role)) {
+      return { success: false, error: 'Permissions can only be assigned to Sub-Admin, Faculty, or Staff accounts.' };
     }
 
     const prevPermissions = existing.permissions || [];
@@ -606,9 +670,9 @@ class UserService {
         actorName: actor.name,
         actorRole: actor.role,
         action: 'ASSIGN_PERMISSION',
-        entityType: 'SUB_ADMIN',
+        entityType: existing.role,
         entityId: existing.uid,
-        changes: `Granted permissions to ${existing.name}: [${added.join(', ')}]`,
+        changes: `Granted permissions to ${existing.name} (${existing.role}): [${added.join(', ')}]`,
       });
     }
 
@@ -618,13 +682,21 @@ class UserService {
         actorName: actor.name,
         actorRole: actor.role,
         action: 'REVOKE_PERMISSION',
-        entityType: 'SUB_ADMIN',
+        entityType: existing.role,
         entityId: existing.uid,
-        changes: `Revoked permissions from ${existing.name}: [${removed.join(', ')}]`,
+        changes: `Revoked permissions from ${existing.name} (${existing.role}): [${removed.join(', ')}]`,
       });
     }
 
     return { success: true, user: updatedUser };
+  }
+
+  async updateSubAdminPermissions(
+    uid: string,
+    permissions: UserPermission[],
+    actor: ActorContext
+  ): Promise<{ success: boolean; user?: UserRecord; error?: string }> {
+    return this.updateUserPermissions(uid, permissions, actor);
   }
 
   /**

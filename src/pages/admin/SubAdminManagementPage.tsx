@@ -27,9 +27,9 @@ import { userService } from '../../services/userService';
 import { formConfigService, DEFAULT_SUB_ADMIN_FIELDS } from '../../services/formConfigService';
 import {
   ALL_PERMISSIONS,
-  PERMISSION_CATEGORIES,
-  getPermissionsByCategory,
 } from '../../services/permissionService';
+import { PermissionCatalogModal } from '../../components/common/PermissionCatalogModal';
+import { PermissionManagerModal } from '../../components/common/PermissionManagerModal';
 import type { UserRecord, UserPermission, FormConfiguration } from '../../types';
 
 export const SubAdminManagementPage: React.FC = () => {
@@ -48,6 +48,7 @@ export const SubAdminManagementPage: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPermModalOpen, setIsPermModalOpen] = useState(false);
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeactivateModalOpen, setIsDeactivateModalOpen] = useState(false);
   const [isReactivateModalOpen, setIsReactivateModalOpen] = useState(false);
@@ -196,25 +197,6 @@ export const SubAdminManagementPage: React.FC = () => {
     setIsReactivateModalOpen(true);
   };
 
-  // Toggle single permission checkbox
-  const handleTogglePermission = (permId: UserPermission) => {
-    setSelectedPermissions((prev) =>
-      prev.includes(permId) ? prev.filter((p) => p !== permId) : [...prev, permId]
-    );
-  };
-
-  // Category Bulk Actions
-  const handleSelectAllCategory = (categoryPerms: UserPermission[]) => {
-    setSelectedPermissions((prev) => {
-      const set = new Set([...prev, ...categoryPerms]);
-      return Array.from(set);
-    });
-  };
-
-  const handleClearCategory = (categoryPerms: UserPermission[]) => {
-    setSelectedPermissions((prev) => prev.filter((p) => !categoryPerms.includes(p)));
-  };
-
   // Submit Add Sub-Admin
   const handleSubmitAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -336,42 +318,6 @@ export const SubAdminManagementPage: React.FC = () => {
     }
   };
 
-  // Save Permissions Matrix
-  const handleSavePermissions = async () => {
-    if (!selectedAdmin) return;
-    setIsSubmitting(true);
-    setModalError(null);
-
-    try {
-      const actor = {
-        uid: userProfile?.uid || 'admin',
-        name: userProfile?.name || 'Administrator',
-        role: role || 'MAIN_ADMIN',
-      };
-
-      const res = await userService.updateSubAdminPermissions(
-        selectedAdmin.uid,
-        selectedPermissions,
-        actor
-      );
-
-      if (!res.success) {
-        setModalError(res.error || 'Failed to update permissions.');
-        setIsSubmitting(false);
-        return;
-      }
-
-      setIsPermModalOpen(false);
-      setToastMessage(`Permissions saved for ${selectedAdmin.name}.`);
-      setTimeout(() => setToastMessage(null), 5000);
-      loadSubAdmins();
-    } catch (err: any) {
-      setModalError(err.message || 'Failed to save permissions.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   // Deactivate
   const handleConfirmDeactivate = async () => {
     if (!selectedAdmin) return;
@@ -430,7 +376,6 @@ export const SubAdminManagementPage: React.FC = () => {
     }
   };
 
-  const groupedPermissions = getPermissionsByCategory();
   const activeCount = subAdmins.filter((s) => s.isActive).length;
   const inactiveCount = subAdmins.filter((s) => !s.isActive).length;
 
@@ -485,6 +430,7 @@ export const SubAdminManagementPage: React.FC = () => {
           value={ALL_PERMISSIONS.length}
           subtitle="Module-level capabilities"
           icon={<Key size={22} />}
+          onClick={() => setIsCatalogModalOpen(true)}
         />
         <StatCard
           label="Deactivated"
@@ -692,7 +638,7 @@ export const SubAdminManagementPage: React.FC = () => {
             </div>
 
             {/* Mobile Cards View */}
-            <div className="show-on-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="show-on-mobile mobile-card-list">
               {subAdmins.map((admin) => (
                 <div
                   key={admin.uid}
@@ -790,152 +736,48 @@ export const SubAdminManagementPage: React.FC = () => {
       </Card>
 
       {/* ========================================================================= */}
-      {/* PERMISSION MATRIX MODAL (Section 15)                                      */}
+      {/* PERMISSION MANAGER MODAL (Granular Capabilities)                          */}
       {/* ========================================================================= */}
-      <Modal
+      <PermissionManagerModal
         isOpen={isPermModalOpen}
-        onClose={() => setIsPermModalOpen(false)}
-        title="Sub-Admin Permissions Matrix"
-        size="large"
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {modalError && (
-            <Alert variant="danger" title="Error">
-              {modalError}
-            </Alert>
-          )}
+        onClose={() => {
+          setIsPermModalOpen(false);
+          setSelectedAdmin(null);
+        }}
+        targetUser={selectedAdmin}
+        onSavePermissions={async (newPermissions) => {
+          if (!selectedAdmin) return;
+          const actor = {
+            uid: userProfile?.uid || 'admin',
+            name: userProfile?.name || 'Administrator',
+            role: role || 'MAIN_ADMIN',
+          };
 
-          {/* User Dossier Summary Header */}
-          <div style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <div>
-                <strong style={{ fontSize: '1.05rem', color: 'var(--color-text-main)' }}>{selectedAdmin?.name}</strong>
-                <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>{selectedAdmin?.email}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                  {selectedAdmin?.designation} • {selectedAdmin?.department}
-                </div>
-              </div>
-              <Badge variant="info">
-                {selectedPermissions.length} of {ALL_PERMISSIONS.length} Permissions Active
-              </Badge>
-            </div>
-          </div>
+          const res = await userService.updateUserPermissions(
+            selectedAdmin.uid,
+            newPermissions,
+            actor
+          );
 
-          {/* Categorized Permissions Grid */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: '55vh', overflowY: 'auto', paddingRight: '0.25rem' }}>
-            {PERMISSION_CATEGORIES.map((cat) => {
-              const categoryPerms = groupedPermissions[cat] || [];
-              const categoryIds = categoryPerms.map((p) => p.id);
+          if (!res.success) {
+            throw new Error(res.error || 'Failed to update permissions.');
+          }
 
-              return (
-                <div
-                  key={cat}
-                  style={{
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-md)',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {/* Category Header with Select All / Clear All */}
-                  <div
-                    style={{
-                      padding: '0.6rem 0.85rem',
-                      backgroundColor: 'var(--color-bg-secondary)',
-                      borderBottom: '1px solid var(--color-border)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      flexWrap: 'wrap',
-                      gap: '0.5rem',
-                    }}
-                  >
-                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{cat}</span>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button
-                        type="button"
-                        className="btn-link"
-                        style={{ fontSize: '0.75rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary)' }}
-                        onClick={() => handleSelectAllCategory(categoryIds)}
-                      >
-                        Select All
-                      </button>
-                      <span style={{ color: 'var(--color-border)' }}>|</span>
-                      <button
-                        type="button"
-                        className="btn-link"
-                        style={{ fontSize: '0.75rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }}
-                        onClick={() => handleClearCategory(categoryIds)}
-                      >
-                        Clear All
-                      </button>
-                    </div>
-                  </div>
+          setIsPermModalOpen(false);
+          setSelectedAdmin(null);
+          setToastMessage(`Permissions updated successfully for ${selectedAdmin.name}.`);
+          setTimeout(() => setToastMessage(null), 5000);
+          loadSubAdmins();
+        }}
+      />
 
-                  {/* Permission Checkbox Items */}
-                  <div style={{ padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    {categoryPerms.map((perm) => {
-                      const isChecked = selectedPermissions.includes(perm.id);
-                      return (
-                        <label
-                          key={perm.id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: '0.65rem',
-                            padding: '0.5rem 0.6rem',
-                            borderRadius: 'var(--radius-sm)',
-                            cursor: 'pointer',
-                            backgroundColor: isChecked ? 'rgba(37, 99, 235, 0.04)' : 'transparent',
-                            transition: 'background-color 0.15s ease',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => handleTogglePermission(perm.id)}
-                            style={{ marginTop: '0.2rem', cursor: 'pointer' }}
-                          />
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{perm.label}</span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                              {perm.description}
-                            </span>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Modal Footer */}
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              borderTop: '1px solid var(--color-border)',
-              paddingTop: '1rem',
-            }}
-          >
-            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-              Total selected: <strong>{selectedPermissions.length}</strong> permissions
-            </div>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <Button variant="ghost" onClick={() => setIsPermModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" isLoading={isSubmitting} onClick={handleSavePermissions}>
-                Save Permissions
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Modal>
+      {/* ========================================================================= */}
+      {/* PERMISSION CATALOG MODAL (Dynamic 26-Capability Directory)                */}
+      {/* ========================================================================= */}
+      <PermissionCatalogModal
+        isOpen={isCatalogModalOpen}
+        onClose={() => setIsCatalogModalOpen(false)}
+      />
 
       {/* ========================================================================= */}
       {/* ADD SUB-ADMIN MODAL                                                       */}

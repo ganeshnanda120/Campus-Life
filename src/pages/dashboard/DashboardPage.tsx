@@ -19,6 +19,7 @@ import {
   CheckCircle,
   HelpCircle,
   UserCheck,
+  Key,
 } from 'lucide-react';
 import { StatCard, Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -34,6 +35,8 @@ import { noticeService } from '../../services/noticeService';
 import { calendarService } from '../../services/calendarService';
 import { pollService } from '../../services/pollService';
 import { activityService } from '../../services/activityService';
+import { ALL_PERMISSIONS } from '../../services/permissionService';
+import { PermissionCatalogModal } from '../../components/common/PermissionCatalogModal';
 import type {
   TimetableEntry,
   StudentRequest,
@@ -47,6 +50,7 @@ import type {
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { userProfile, role } = useAuth();
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
 
   // Admin stats
   const [adminStats, setAdminStats] = useState<DashboardStats>({
@@ -582,71 +586,191 @@ export const DashboardPage: React.FC = () => {
         </Card>
 
         {/* Student Quick Action Grid */}
-        <Card>
-          <h3 style={{ fontSize: '1.05rem', margin: '0 0 1rem 0' }}>Quick Access</h3>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-              gap: '0.75rem',
-            }}
-          >
-            <button
-              type="button"
-              className="card card-interactive"
-              onClick={() => navigate('/student/gate-pass')}
-              style={{ padding: '0.85rem', textAlign: 'left', border: '1px solid var(--border-default)', cursor: 'pointer', background: 'var(--bg-surface)' }}
-            >
-              <DoorOpen size={20} style={{ color: 'var(--brand-primary)', marginBottom: '0.4rem' }} />
-              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Apply Gate Pass</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Egress with verified QR</div>
-            </button>
-
-            <button
-              type="button"
-              className="card card-interactive"
-              onClick={() => navigate('/notices')}
-              style={{ padding: '0.85rem', textAlign: 'left', border: '1px solid var(--border-default)', cursor: 'pointer', background: 'var(--bg-surface)' }}
-            >
-              <Megaphone size={20} style={{ color: 'var(--status-danger)', marginBottom: '0.4rem' }} />
-              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Campus Notices</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Official circulars & alerts</div>
-            </button>
-
-            <button
-              type="button"
-              className="card card-interactive"
-              onClick={() => navigate('/lost-found')}
-              style={{ padding: '0.85rem', textAlign: 'left', border: '1px solid var(--border-default)', cursor: 'pointer', background: 'var(--bg-surface)' }}
-            >
-              <Compass size={20} style={{ color: 'var(--status-warning)', marginBottom: '0.4rem' }} />
-              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Lost & Found</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Retrieve or report items</div>
-            </button>
-
-            <button
-              type="button"
-              className="card card-interactive"
-              onClick={() => navigate('/service-directory')}
-              style={{ padding: '0.85rem', textAlign: 'left', border: '1px solid var(--border-default)', cursor: 'pointer', background: 'var(--bg-surface)' }}
-            >
-              <Building size={20} style={{ color: 'var(--status-info)', marginBottom: '0.4rem' }} />
-              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Service Directory</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Office hours & contacts</div>
-            </button>
-
-            <button
-              type="button"
-              className="card card-interactive"
-              onClick={() => navigate('/help')}
-              style={{ padding: '0.85rem', textAlign: 'left', border: '1px solid var(--border-default)', cursor: 'pointer', background: 'var(--bg-surface)' }}
-            >
-              <HelpCircle size={20} style={{ color: 'var(--status-success)', marginBottom: '0.4rem' }} />
-              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Help Center & FAQ</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Procedures and answers</div>
-            </button>
+        <div className="card">
+          <div className="card-header">
+            <h3 style={{ fontSize: '1.05rem', margin: 0 }}>Quick Access</h3>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Frequently used services</span>
           </div>
-        </Card>
+          <div className="card-body">
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '1.25rem',
+              }}
+            >
+              <button
+                type="button"
+                className="card card-interactive"
+                onClick={() => navigate('/student/gate-pass')}
+                style={{
+                  padding: '1.25rem',
+                  textAlign: 'left',
+                  border: '1px solid var(--border-default)',
+                  cursor: 'pointer',
+                  background: 'var(--bg-surface)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                }}
+              >
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--brand-primary)',
+                    marginBottom: '0.25rem',
+                  }}
+                >
+                  <DoorOpen size={22} />
+                </div>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Apply Gate Pass</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Egress with verified QR</div>
+              </button>
+
+              <button
+                type="button"
+                className="card card-interactive"
+                onClick={() => navigate('/notices')}
+                style={{
+                  padding: '1.25rem',
+                  textAlign: 'left',
+                  border: '1px solid var(--border-default)',
+                  cursor: 'pointer',
+                  background: 'var(--bg-surface)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                }}
+              >
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--status-danger)',
+                    marginBottom: '0.25rem',
+                  }}
+                >
+                  <Megaphone size={22} />
+                </div>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Campus Notices</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Official circulars & alerts</div>
+              </button>
+
+              <button
+                type="button"
+                className="card card-interactive"
+                onClick={() => navigate('/lost-found')}
+                style={{
+                  padding: '1.25rem',
+                  textAlign: 'left',
+                  border: '1px solid var(--border-default)',
+                  cursor: 'pointer',
+                  background: 'var(--bg-surface)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                }}
+              >
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--status-warning)',
+                    marginBottom: '0.25rem',
+                  }}
+                >
+                  <Compass size={22} />
+                </div>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Lost & Found</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Retrieve or report items</div>
+              </button>
+
+              <button
+                type="button"
+                className="card card-interactive"
+                onClick={() => navigate('/service-directory')}
+                style={{
+                  padding: '1.25rem',
+                  textAlign: 'left',
+                  border: '1px solid var(--border-default)',
+                  cursor: 'pointer',
+                  background: 'var(--bg-surface)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                }}
+              >
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--status-info)',
+                    marginBottom: '0.25rem',
+                  }}
+                >
+                  <Building size={22} />
+                </div>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Service Directory</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Office hours & contacts</div>
+              </button>
+
+              <button
+                type="button"
+                className="card card-interactive"
+                onClick={() => navigate('/help')}
+                style={{
+                  padding: '1.25rem',
+                  textAlign: 'left',
+                  border: '1px solid var(--border-default)',
+                  cursor: 'pointer',
+                  background: 'var(--bg-surface)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                }}
+              >
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--status-success)',
+                    marginBottom: '0.25rem',
+                  }}
+                >
+                  <HelpCircle size={22} />
+                </div>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Help Center & FAQ</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Procedures and answers</div>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -800,6 +924,16 @@ export const DashboardPage: React.FC = () => {
           icon={<ShieldAlert size={22} />}
           onClick={() => navigate('/admin/sub-admins')}
         />
+
+        {role === 'MAIN_ADMIN' && (
+          <StatCard
+            label="Granular Permissions"
+            value={ALL_PERMISSIONS.length}
+            subtitle="Module-level capabilities"
+            icon={<Key size={22} />}
+            onClick={() => setIsCatalogModalOpen(true)}
+          />
+        )}
 
         <StatCard
           label="Active Campus Notices"
@@ -1000,6 +1134,12 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Permission Catalog Modal */}
+      <PermissionCatalogModal
+        isOpen={isCatalogModalOpen}
+        onClose={() => setIsCatalogModalOpen(false)}
+      />
     </div>
   );
 };

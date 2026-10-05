@@ -21,14 +21,12 @@ import {
   type StudentAttendanceSummary,
 } from '../../services/attendanceService';
 import { userService } from '../../services/userService';
+import { hasPermission } from '../../services/permissionService';
 
 export const AttendancePage: React.FC = () => {
   const { userProfile, role, permissions } = useAuth();
 
-  const isFacultyOrAdmin =
-    role === 'FACULTY' ||
-    role === 'MAIN_ADMIN' ||
-    (role === 'SUB_ADMIN' && permissions.includes('MANAGE_ATTENDANCE'));
+  const canManageAttendance = hasPermission(role, permissions, 'MANAGE_ATTENDANCE');
 
   // Student Attendance States
   const [summary, setSummary] = useState<StudentAttendanceSummary | null>(null);
@@ -74,6 +72,10 @@ export const AttendancePage: React.FC = () => {
 
   // Open Faculty Attendance Marking Modal
   const handleOpenMarkAttendance = async () => {
+    if (!canManageAttendance) {
+      alert('Unauthorized: You require MANAGE_ATTENDANCE permission to mark attendance.');
+      return;
+    }
     try {
       const allUsers = await userService.getAllUsers();
       const students = allUsers.filter((u) => u.role === 'STUDENT' && u.isActive);
@@ -110,6 +112,10 @@ export const AttendancePage: React.FC = () => {
 
   // Save Faculty Attendance
   const handleSaveAttendance = async () => {
+    if (!canManageAttendance) {
+      alert('Unauthorized: You require MANAGE_ATTENDANCE permission to mark attendance.');
+      return;
+    }
     setIsSaving(true);
     try {
       await attendanceService.recordAttendance({
@@ -181,7 +187,7 @@ export const AttendancePage: React.FC = () => {
           </Button>
 
           {/* Authorized Faculty Attendance Action (Section 9) */}
-          {isFacultyOrAdmin && (
+          {canManageAttendance && (
             <Button
               variant="primary"
               size="sm"
@@ -286,7 +292,7 @@ export const AttendancePage: React.FC = () => {
             </div>
 
             {/* Mobile Cards View */}
-            <div className="show-on-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div className="show-on-mobile mobile-card-list">
               {summary?.subjects.map((sub) => (
                 <div
                   key={sub.subjectCode}
@@ -439,10 +445,20 @@ export const AttendancePage: React.FC = () => {
         onClose={() => setIsMarkModalOpen(false)}
         title="Mark Classroom Attendance"
         size="large"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.85rem', width: '100%' }}>
+            <Button variant="ghost" onClick={() => setIsMarkModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" isLoading={isSaving} leftIcon={<Save size={16} />} onClick={handleSaveAttendance}>
+              Save Attendance Records
+            </Button>
+          </div>
+        }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {/* Class and Date Controls */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', padding: '0.85rem', backgroundColor: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-md)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', padding: '1.25rem', backgroundColor: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)' }}>
             <div>
               <label className="input-label" htmlFor="att-subj">Subject / Course *</label>
               <select
@@ -473,22 +489,22 @@ export const AttendancePage: React.FC = () => {
           </div>
 
           {/* Quick Bulk Toggle */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-              Enrolled Students: <strong>{studentRoster.length}</strong>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', padding: '0.25rem 0' }}>
+            <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+              Enrolled Students: <strong style={{ color: 'var(--text-primary)' }}>{studentRoster.length}</strong>
             </span>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <Button variant="ghost" size="sm" onClick={() => handleSetAll('PRESENT')}>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <Button variant="outline" size="sm" onClick={() => handleSetAll('PRESENT')}>
                 Mark All Present
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => handleSetAll('ABSENT')}>
+              <Button variant="outline" size="sm" onClick={() => handleSetAll('ABSENT')}>
                 Mark All Absent
               </Button>
             </div>
           </div>
 
           {/* Student Roster Checkbox List */}
-          <div style={{ maxHeight: '45vh', overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}>
+          <div style={{ maxHeight: '45vh', overflowY: 'auto', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)' }}>
             <table className="data-table">
               <thead>
                 <tr>
@@ -509,14 +525,14 @@ export const AttendancePage: React.FC = () => {
                         type="button"
                         onClick={() => handleToggleStatus(idx)}
                         style={{
-                          padding: '0.35rem 0.75rem',
-                          borderRadius: 'var(--radius-sm)',
+                          padding: '0.45rem 0.95rem',
+                          borderRadius: 'var(--radius-full)',
                           border: 'none',
                           cursor: 'pointer',
                           fontWeight: 600,
-                          fontSize: '0.8rem',
+                          fontSize: '0.825rem',
                           backgroundColor: stu.status === 'PRESENT' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                          color: stu.status === 'PRESENT' ? 'var(--color-success)' : 'var(--color-danger)',
+                          color: stu.status === 'PRESENT' ? 'var(--status-success)' : 'var(--status-danger)',
                           transition: 'all 0.15s ease',
                         }}
                       >
@@ -527,16 +543,6 @@ export const AttendancePage: React.FC = () => {
                 ))}
               </tbody>
             </table>
-          </div>
-
-          {/* Modal Footer */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
-            <Button variant="ghost" onClick={() => setIsMarkModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="primary" isLoading={isSaving} leftIcon={<Save size={16} />} onClick={handleSaveAttendance}>
-              Save Attendance Records
-            </Button>
           </div>
         </div>
       </Modal>

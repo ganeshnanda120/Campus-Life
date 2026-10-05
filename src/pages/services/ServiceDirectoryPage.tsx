@@ -285,23 +285,24 @@ export const ServiceDirectoryPage: React.FC = () => {
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '600px', width: '92%' }}
+            style={{ maxWidth: '640px', width: '92%' }}
           >
             <div className="modal-header">
-              <h3 style={{ margin: 0 }}>Add Campus Office to Directory</h3>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Add Campus Office to Directory</h3>
               <button
                 type="button"
                 className="btn-ghost btn-icon"
                 onClick={() => setModalOpen(false)}
+                aria-label="Close dialog"
               >
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleAddSubmit}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                  <div>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }}>
+                <div className="form-grid-2">
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Department *</label>
                     <select
                       className="form-input"
@@ -320,7 +321,7 @@ export const ServiceDirectoryPage: React.FC = () => {
                     </select>
                   </div>
 
-                  <div>
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Office Name *</label>
                     <input
                       type="text"
@@ -333,8 +334,8 @@ export const ServiceDirectoryPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                  <div>
+                <div className="form-grid-2">
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Location / Room Number *</label>
                     <input
                       type="text"
@@ -346,7 +347,7 @@ export const ServiceDirectoryPage: React.FC = () => {
                     />
                   </div>
 
-                  <div>
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Working Hours *</label>
                     <input
                       type="text"
@@ -359,8 +360,8 @@ export const ServiceDirectoryPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                  <div>
+                <div className="form-grid-2">
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Official Email</label>
                     <input
                       type="email"
@@ -371,7 +372,7 @@ export const ServiceDirectoryPage: React.FC = () => {
                     />
                   </div>
 
-                  <div>
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Helpline / Phone Number</label>
                     <input
                       type="text"
@@ -383,7 +384,7 @@ export const ServiceDirectoryPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Services Provided (comma-separated) *</label>
                   <input
                     type="text"
@@ -395,14 +396,15 @@ export const ServiceDirectoryPage: React.FC = () => {
                   />
                 </div>
 
-                <div>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Special Instructions for Students</label>
                   <textarea
-                    rows={2}
+                    rows={3}
                     className="form-input"
                     placeholder="e.g. Bring student digital ID and hall ticket for in-person document collection."
                     value={formData.instructions}
                     onChange={(e) => setFormData({ ...formData, instructions: e.target.value })}
+                    style={{ minHeight: '90px' }}
                   />
                 </div>
               </div>

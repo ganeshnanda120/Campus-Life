@@ -297,9 +297,9 @@ export const DEFAULT_FACULTY_FIELDS: FormFieldDefinition[] = [
     order: 3,
   },
   {
-    id: 'field_fac_department',
-    key: 'department',
-    label: 'Department',
+    id: 'field_fac_degree',
+    key: 'degree',
+    label: 'Degree / Program',
     type: 'dropdown',
     required: true,
     enabled: true,
@@ -307,6 +307,19 @@ export const DEFAULT_FACULTY_FIELDS: FormFieldDefinition[] = [
     isProtected: false,
     scope: 'ALL',
     order: 4,
+  },
+  {
+    id: 'field_fac_branch',
+    key: 'branch',
+    label: 'Branch / Specialization',
+    type: 'dropdown',
+    required: false,
+    enabled: true,
+    isCustom: false,
+    isProtected: false,
+    scope: 'ALL',
+    placeholder: 'e.g. Computer Science & Engineering',
+    order: 5,
   },
   {
     id: 'field_fac_designation',
@@ -319,19 +332,6 @@ export const DEFAULT_FACULTY_FIELDS: FormFieldDefinition[] = [
     isProtected: false,
     scope: 'ALL',
     placeholder: 'e.g. Associate Professor',
-    order: 5,
-  },
-  {
-    id: 'field_fac_branch',
-    key: 'branch',
-    label: 'Branch / Specialization Area',
-    type: 'text',
-    required: false,
-    enabled: true,
-    isCustom: false,
-    isProtected: false,
-    scope: 'ALL',
-    placeholder: 'e.g. CSE, AI & Data Science',
     order: 6,
   },
   {
@@ -465,7 +465,10 @@ function getLocalConfig(formType: FormConfigType): FormConfiguration {
       if (parsed && Array.isArray(parsed.fields)) {
         // Merge with defaults to ensure protected fields exist
         const defaults = getDefaultsForType(formType);
-        const mergedFields: FormFieldDefinition[] = [...parsed.fields];
+        let mergedFields: FormFieldDefinition[] = [...parsed.fields];
+        if (formType === 'FACULTY') {
+          mergedFields = mergedFields.filter((f) => f.key !== 'department' && f.id !== 'field_fac_department');
+        }
 
         // Ensure all default fields are in the list
         for (const def of defaults) {
@@ -536,7 +539,11 @@ export const formConfigService = {
           if (remote && Array.isArray(remote.fields)) {
             // Re-enforce protected fields
             const defaults = getDefaultsForType(formType);
-            const fields = remote.fields.map((f) => {
+            let rawFields = remote.fields;
+            if (formType === 'FACULTY') {
+              rawFields = rawFields.filter((f) => f.key !== 'department' && f.id !== 'field_fac_department');
+            }
+            const fields = rawFields.map((f) => {
               const def = defaults.find((d) => d.id === f.id || d.key === f.key);
               if (def?.isProtected) {
                 return {

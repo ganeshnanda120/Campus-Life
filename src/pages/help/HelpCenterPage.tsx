@@ -98,7 +98,7 @@ export const HelpCenterPage: React.FC = () => {
       </div>
 
       {/* Category Pills */}
-      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', paddingBottom: '0.25rem' }}>
+      <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap', paddingBottom: '0.25rem' }}>
         {categories.map((cat) => (
           <button
             key={cat}
@@ -106,15 +106,17 @@ export const HelpCenterPage: React.FC = () => {
             className="btn-ghost"
             onClick={() => setCategoryFilter(cat)}
             style={{
-              padding: '0.35rem 0.8rem',
+              padding: '0.45rem 1rem',
               borderRadius: 'var(--radius-full)',
-              fontSize: '0.825rem',
+              fontSize: '0.85rem',
               fontWeight: categoryFilter === cat ? 600 : 500,
               backgroundColor: categoryFilter === cat ? 'var(--brand-primary)' : 'var(--bg-subtle)',
               color: categoryFilter === cat ? '#ffffff' : 'var(--text-secondary)',
-              border: 'none',
+              border: categoryFilter === cat ? '1px solid var(--brand-primary)' : '1px solid var(--border-default)',
               cursor: 'pointer',
               whiteSpace: 'nowrap',
+              boxShadow: categoryFilter === cat ? '0 1px 3px rgba(37, 99, 235, 0.25)' : 'none',
+              transition: 'all 0.15s ease',
             }}
           >
             {cat === 'ALL' ? 'All Questions' : cat}

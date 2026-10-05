@@ -67,7 +67,7 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '1rem 1.25rem',
+          padding: '1.25rem 1.5rem',
           cursor: 'pointer',
           userSelect: 'none',
         }}
@@ -78,7 +78,7 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '0.85rem',
+            gap: '1rem',
             flex: 1,
             paddingRight: '1rem',
             minWidth: 0,
@@ -89,14 +89,14 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
             className="shrink-0 px-2.5 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-700 border border-slate-200"
             style={{
               flexShrink: 0,
-              padding: '0.25rem 0.65rem',
-              fontSize: '0.75rem',
-              fontWeight: 500,
+              padding: '0.3rem 0.75rem',
+              fontSize: '0.78rem',
+              fontWeight: 600,
               borderRadius: '9999px',
               backgroundColor: 'var(--bg-subtle, #f1f5f9)',
               color: 'var(--text-secondary, #334155)',
               border: '1px solid var(--border-default, #e2e8f0)',
-              lineHeight: 1.2,
+              lineHeight: 1.25,
               whiteSpace: 'nowrap',
             }}
           >
@@ -107,10 +107,10 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
           <h3
             className="text-sm sm:text-base font-semibold text-slate-800 leading-snug m-0"
             style={{
-              fontSize: '0.925rem',
+              fontSize: '0.975rem',
               fontWeight: 600,
               color: 'var(--text-primary, #1e293b)',
-              lineHeight: 1.35,
+              lineHeight: 1.45,
               margin: 0,
             }}
           >
@@ -131,7 +131,7 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
             transition: 'transform 0.2s ease',
           }}
         >
-          <ChevronDown size={18} />
+          <ChevronDown size={20} />
         </div>
       </div>
 
@@ -141,7 +141,7 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
           className="border-t border-slate-100 px-5 pt-3 pb-4 bg-slate-50/50"
           style={{
             borderTop: '1px solid var(--border-subtle, #f1f5f9)',
-            padding: '0.75rem 1.25rem 1rem 1.25rem',
+            padding: '1.25rem 1.5rem',
             backgroundColor: 'var(--bg-canvas, rgba(248, 250, 252, 0.5))',
           }}
           onClick={(e) => e.stopPropagation()}
@@ -150,10 +150,10 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
           <p
             className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-3"
             style={{
-              fontSize: '0.85rem',
+              fontSize: '0.9rem',
               color: 'var(--text-secondary, #475569)',
-              lineHeight: 1.6,
-              margin: '0 0 0.75rem 0',
+              lineHeight: 1.65,
+              margin: '0 0 1rem 0',
             }}
           >
             {faq.answer}
@@ -166,9 +166,9 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              paddingTop: '0.5rem',
+              paddingTop: '0.75rem',
               borderTop: '1px solid var(--border-subtle, rgba(241, 245, 249, 0.8))',
-              gap: '0.5rem',
+              gap: '0.75rem',
             }}
           >
             {/* Left: Quick Portal Action Link */}

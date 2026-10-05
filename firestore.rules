@@ -42,7 +42,7 @@ service cloud.firestore {
     }
 
     function hasPermission(perm) {
-      return isMainAdmin() || (isSubAdmin() && perm in getUserData().get('permissions', []));
+      return isMainAdmin() || ((isSubAdmin() || isFaculty() || isStaff()) && perm in getUserData().get('permissions', []));
     }
 
     // --------------------------------------------------------------------------

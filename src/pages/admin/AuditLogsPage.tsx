@@ -228,7 +228,7 @@ export const AuditLogsPage: React.FC = () => {
             </div>
 
             {/* Mobile Cards View */}
-            <div className="show-on-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div className="show-on-mobile mobile-card-list">
               {paginatedLogs.map((l) => (
                 <div
                   key={l.id}

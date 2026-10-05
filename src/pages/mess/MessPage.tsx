@@ -21,6 +21,7 @@ import {
   messService,
   MEAL_TIMINGS,
 } from '../../services/messService';
+import { hasPermission } from '../../services/permissionService';
 import type {
   MessMenuItem,
   MessAnnouncement,
@@ -36,10 +37,7 @@ export const MessPage: React.FC = () => {
   const { userProfile, role, permissions } = useAuth();
 
   const isDayScholar = userProfile?.studentCategory === 'DAY_SCHOLAR';
-  const isAdminOrStaff =
-    role === 'MAIN_ADMIN' ||
-    (role === 'SUB_ADMIN' && permissions.includes('MANAGE_MESS')) ||
-    role === 'STAFF';
+  const isAdminOrStaff = hasPermission(role, permissions, 'MANAGE_MESS');
 
   const [menu, setMenu] = useState<MessMenuItem[]>([]);
   const [announcements, setAnnouncements] = useState<MessAnnouncement[]>([]);
@@ -495,7 +493,7 @@ export const MessPage: React.FC = () => {
         onClose={() => !isSubmittingFb && setIsFeedbackModalOpen(false)}
         title="Submit Dining Feedback"
         footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', width: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.85rem', width: '100%' }}>
             <Button variant="outline" onClick={() => setIsFeedbackModalOpen(false)} disabled={isSubmittingFb}>
               Cancel
             </Button>
@@ -505,9 +503,9 @@ export const MessPage: React.FC = () => {
           </div>
         }
       >
-        <form onSubmit={handleSubmitFeedback} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+        <form onSubmit={handleSubmitFeedback} style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="input-label">
               Feedback Category *
             </label>
             <select
@@ -523,43 +521,77 @@ export const MessPage: React.FC = () => {
             </select>
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="input-label">
               Rating *
             </label>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => setFeedbackRating(star)}
-                  style={{ padding: '4px' }}
-                  aria-label={`Rate ${star} stars`}
-                >
-                  <Star
-                    size={24}
-                    fill={star <= feedbackRating ? '#f59e0b' : 'none'}
-                    color="#f59e0b"
-                  />
-                </button>
-              ))}
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--brand-primary)', marginLeft: '0.5rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.75rem',
+                alignItems: 'center',
+                padding: '0.85rem 1rem',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: 'var(--bg-subtle)',
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '0.25rem' }}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setFeedbackRating(star)}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      borderRadius: 'var(--radius-sm)',
+                      transition: 'transform 0.15s ease',
+                    }}
+                    aria-label={`Rate ${star} stars`}
+                  >
+                    <Star
+                      size={26}
+                      fill={star <= feedbackRating ? '#f59e0b' : 'none'}
+                      color="#f59e0b"
+                    />
+                  </button>
+                ))}
+              </div>
+              <span
+                style={{
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  color: 'var(--brand-primary)',
+                  marginLeft: '0.5rem',
+                  backgroundColor: 'var(--bg-surface)',
+                  padding: '0.25rem 0.65rem',
+                  borderRadius: 'var(--radius-full)',
+                  border: '1px solid var(--border-default)',
+                }}
+              >
                 {feedbackRating} of 5 Stars
               </span>
             </div>
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="input-label">
               Detailed Feedback Comments *
             </label>
             <textarea
               className="input-field"
-              rows={3}
+              rows={4}
               placeholder="What went well? Any items that need improvement?..."
               value={feedbackComment}
               onChange={(e) => setFeedbackComment(e.target.value)}
+              style={{ minHeight: '100px' }}
               required
             />
           </div>

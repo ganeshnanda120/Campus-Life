@@ -34,6 +34,13 @@ export type UserPermission =
   | 'VIEW_AUDIT_LOGS'
   | 'MANAGE_SETTINGS';
 
+export interface AcademicDegreeAssignment {
+  degreeId?: string;
+  degreeName: string;
+  branchId?: string;
+  branchName: string;
+}
+
 export interface UserRecord {
   uid: string;
   email: string;
@@ -43,6 +50,8 @@ export interface UserRecord {
   department?: string;
   degree?: string;
   branch?: string;
+  degreeAssignments?: AcademicDegreeAssignment[];
+  specialSessionBranches?: string[];
   year?: number;
   semester?: number;
   studentId?: string;

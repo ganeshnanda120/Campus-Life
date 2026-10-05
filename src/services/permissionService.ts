@@ -194,17 +194,28 @@ export function getPermissionsByCategory(): Record<string, PermissionDefinition[
 /**
  * Deterministic permission checker:
  * - MAIN_ADMIN has complete access across all modules.
- * - SUB_ADMIN has access only if the specific permission is granted.
- * - Other roles do not have administrative access.
+ * - SUB_ADMIN, FACULTY, and STAFF have access if the specific granular permission is granted.
+ * - Roles without the granted permission are blocked.
  */
 export function hasPermission(
   role: UserRole | null | undefined,
   permissions: UserPermission[] | null | undefined,
   required: UserPermission
 ): boolean {
+  if (!role) return false;
   if (role === 'MAIN_ADMIN') return true;
-  if (role === 'SUB_ADMIN' && permissions) {
+  if ((role === 'SUB_ADMIN' || role === 'FACULTY' || role === 'STAFF') && Array.isArray(permissions)) {
     return permissions.includes(required);
   }
   return false;
+}
+
+export function hasAnyPermission(
+  role: UserRole | null | undefined,
+  permissions: UserPermission[] | null | undefined,
+  requiredList: UserPermission[]
+): boolean {
+  if (!role) return false;
+  if (role === 'MAIN_ADMIN') return true;
+  return requiredList.some((p) => hasPermission(role, permissions, p));
 }

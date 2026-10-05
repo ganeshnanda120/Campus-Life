@@ -238,7 +238,7 @@ export const ActivatePage: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '1.5rem',
+        padding: '2rem 1.5rem',
         backgroundColor: 'var(--bg-canvas)',
       }}
     >
@@ -246,32 +246,35 @@ export const ActivatePage: React.FC = () => {
         className="card"
         style={{
           width: '100%',
-          maxWidth: '460px',
+          maxWidth: '480px',
           boxShadow: 'var(--shadow-xl)',
+          borderRadius: 'var(--radius-xl, 16px)',
+          border: '1px solid var(--border-default)',
         }}
       >
-        <div className="card-body" style={{ padding: '2rem 1.75rem' }}>
+        <div className="card-body" style={{ padding: '2.5rem 2.25rem' }}>
           {/* Header */}
-          <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
             <div
               style={{
-                width: 52,
-                height: 52,
-                borderRadius: 'var(--radius-lg)',
+                width: 58,
+                height: 58,
+                borderRadius: 'var(--radius-xl, 16px)',
                 backgroundColor: 'var(--brand-primary)',
                 color: '#ffffff',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: '1rem',
+                marginBottom: '1.15rem',
+                boxShadow: '0 8px 20px rgba(37, 99, 235, 0.25)',
               }}
             >
-              <ShieldCheck size={28} />
+              <ShieldCheck size={30} />
             </div>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 700, margin: '0 0 0.25rem 0' }}>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 0.35rem 0', color: 'var(--text-primary)' }}>
               First-Time Account Activation
             </h1>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0 }}>
               Step-by-step verification and initial credential initialization
             </p>
           </div>

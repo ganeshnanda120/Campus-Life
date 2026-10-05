@@ -26,6 +26,7 @@ import {
   calculateAgeingDays,
   getAgeingBucket,
 } from '../../services/complaintService';
+import { hasPermission } from '../../services/permissionService';
 import type {
   Complaint,
   ComplaintCategory,
@@ -43,10 +44,10 @@ export const ComplaintsPage: React.FC = () => {
   const locId = useId();
   const descId = useId();
 
-  const isStaffOrAdmin =
-    role === 'MAIN_ADMIN' ||
-    (role === 'SUB_ADMIN' && (permissions.includes('MANAGE_COMPLAINTS') || permissions.includes('ASSIGN_COMPLAINTS'))) ||
-    role === 'STAFF';
+  const canManageComplaints = hasPermission(role, permissions, 'MANAGE_COMPLAINTS');
+  const canAssignComplaints = hasPermission(role, permissions, 'ASSIGN_COMPLAINTS');
+  const canRespondComplaints = hasPermission(role, permissions, 'RESPOND_TO_COMPLAINTS');
+  const isStaffOrAdmin = canManageComplaints || canAssignComplaints || canRespondComplaints;
 
   // Complaint list state
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -236,6 +237,10 @@ export const ComplaintsPage: React.FC = () => {
   // Assign complaint
   const handleAssignSubmit = async () => {
     if (!selectedComplaint) return;
+    if (!canAssignComplaints && !canManageComplaints) {
+      alert('Unauthorized: You do not have permission to assign complaints.');
+      return;
+    }
     try {
       const updated = await complaintService.assignComplaint(selectedComplaint.id, {
         department: assignDept,
@@ -259,6 +264,10 @@ export const ComplaintsPage: React.FC = () => {
   // Update status
   const handleStatusSubmit = async () => {
     if (!selectedComplaint) return;
+    if (!canRespondComplaints && !canManageComplaints) {
+      alert('Unauthorized: You do not have permission to respond or update complaint status.');
+      return;
+    }
     try {
       const updated = await complaintService.updateStatus(selectedComplaint.id, {
         status: newStatus,
@@ -281,6 +290,10 @@ export const ComplaintsPage: React.FC = () => {
   // Escalate
   const handleEscalateSubmit = async () => {
     if (!selectedComplaint) return;
+    if (!canManageComplaints) {
+      alert('Unauthorized: You do not have permission to escalate complaints.');
+      return;
+    }
     if (!escalateReason.trim()) {
       alert('Please enter an escalation rationale.');
       return;
@@ -632,7 +645,7 @@ export const ComplaintsPage: React.FC = () => {
         onClose={() => !isSubmitting && setIsNewModalOpen(false)}
         title="Report Campus Issue / Maintenance Complaint"
         footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', width: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.85rem', width: '100%' }}>
             <Button variant="outline" onClick={() => setIsNewModalOpen(false)} disabled={isSubmitting}>
               Cancel
             </Button>
@@ -642,28 +655,45 @@ export const ComplaintsPage: React.FC = () => {
           </div>
         }
       >
-        <form onSubmit={handleCreateComplaint} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <form onSubmit={handleCreateComplaint} style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }}>
           {formError && <Alert variant="danger">{formError}</Alert>}
 
-          <div>
-            <label htmlFor={catId} style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-              Category *
-            </label>
-            <select
-              id={catId}
-              className="input-field"
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value as ComplaintCategory)}
-              required
-            >
-              {COMPLAINT_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
+          <div className="form-grid-2">
+            <div className="form-group" style={{ margin: 0 }}>
+              <label htmlFor={catId} className="input-label">
+                Category *
+              </label>
+              <select
+                id={catId}
+                className="input-field"
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value as ComplaintCategory)}
+                required
+              >
+                {COMPLAINT_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group" style={{ margin: 0 }}>
+              <label htmlFor={locId} className="input-label">
+                Exact Location / Room *
+              </label>
+              <input
+                id={locId}
+                type="text"
+                className="input-field"
+                placeholder="e.g., Hostel Block A, Room 204 or Lab 3"
+                value={newLocation}
+                onChange={(e) => setNewLocation(e.target.value)}
+                required
+              />
+            </div>
           </div>
 
-          <div>
-            <label htmlFor={titleId} style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label htmlFor={titleId} className="input-label">
               Complaint Title *
             </label>
             <input
@@ -677,23 +707,8 @@ export const ComplaintsPage: React.FC = () => {
             />
           </div>
 
-          <div>
-            <label htmlFor={locId} style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-              Exact Location / Room *
-            </label>
-            <input
-              id={locId}
-              type="text"
-              className="input-field"
-              placeholder="e.g., Hostel Block A, Room 204 or Academic Block 2 Lab 3"
-              value={newLocation}
-              onChange={(e) => setNewLocation(e.target.value)}
-              required
-            />
-          </div>
-
-          <div>
-            <label htmlFor={descId} style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label htmlFor={descId} className="input-label">
               Detailed Description *
             </label>
             <textarea
@@ -703,12 +718,13 @@ export const ComplaintsPage: React.FC = () => {
               placeholder="Describe the issue, urgency, and any safety hazards..."
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
+              style={{ minHeight: '110px' }}
               required
             />
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="input-label">
               Optional Attachment (Image / Video / Document)
             </label>
             <input
@@ -718,26 +734,52 @@ export const ComplaintsPage: React.FC = () => {
               accept="image/*,video/*,application/pdf"
               onChange={handleFileSelect}
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              leftIcon={<Upload size={14} />}
-              onClick={() => fileInputRef.current?.click()}
+            <div
+              style={{
+                display: 'flex',
+                gap: '1rem',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                padding: '1rem 1.25rem',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: 'var(--bg-subtle)',
+                border: '1px dashed var(--border-default)',
+              }}
             >
-              Choose Attachment (&lt; 10MB)
-            </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                leftIcon={<Upload size={14} />}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Choose Attachment (&lt; 10MB)
+              </Button>
+              <span style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>
+                Images, Videos, PDFs accepted
+              </span>
+            </div>
 
             {uploadProgress !== null && (
-              <div style={{ marginTop: '0.5rem', width: '100%', height: 4, backgroundColor: 'var(--bg-subtle)' }}>
+              <div style={{ marginTop: '0.5rem', width: '100%', height: 4, backgroundColor: 'var(--bg-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
                 <div style={{ width: `${uploadProgress}%`, height: '100%', backgroundColor: 'var(--brand-primary)' }} />
               </div>
             )}
 
             {newAttachments.length > 0 && (
-              <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <div style={{ marginTop: '0.65rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                 {newAttachments.map((att, i) => (
-                  <div key={i} style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                  <div
+                    key={i}
+                    style={{
+                      fontSize: '0.825rem',
+                      color: 'var(--text-secondary)',
+                      padding: '0.4rem 0.65rem',
+                      backgroundColor: 'var(--bg-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border-subtle)',
+                    }}
+                  >
                     📎 {att.name} ({(att.size / 1024).toFixed(1)} KB)
                   </div>
                 ))}

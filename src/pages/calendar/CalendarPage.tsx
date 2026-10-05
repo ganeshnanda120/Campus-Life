@@ -141,15 +141,15 @@ export const CalendarPage: React.FC = () => {
       <div
         className="card"
         style={{
-          padding: '0.85rem 1rem',
+          padding: '1.25rem 1.5rem',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
-          gap: '0.5rem',
+          gap: '1rem',
         }}
       >
-        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
           {[
             { key: 'ALL', label: 'All Dates' },
             { key: 'examination', label: 'Examinations' },
@@ -161,17 +161,17 @@ export const CalendarPage: React.FC = () => {
             <button
               key={tab.key}
               type="button"
-              className="btn-ghost"
               onClick={() => setCategoryFilter(tab.key)}
               style={{
-                padding: '0.35rem 0.75rem',
-                borderRadius: 'var(--radius-md)',
-                fontSize: '0.825rem',
+                padding: '0.45rem 1rem',
+                borderRadius: 'var(--radius-full)',
+                fontSize: '0.85rem',
                 fontWeight: categoryFilter === tab.key ? 600 : 500,
                 backgroundColor: categoryFilter === tab.key ? 'var(--brand-primary)' : 'var(--bg-subtle)',
                 color: categoryFilter === tab.key ? '#ffffff' : 'var(--text-secondary)',
-                border: 'none',
+                border: categoryFilter === tab.key ? '1px solid var(--brand-primary)' : '1px solid var(--border-default)',
                 cursor: 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
               {tab.label}
@@ -179,7 +179,7 @@ export const CalendarPage: React.FC = () => {
           ))}
         </div>
 
-        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 500 }}>
           {filteredEvents.length} events scheduled
         </span>
       </div>
@@ -286,22 +286,23 @@ export const CalendarPage: React.FC = () => {
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '580px', width: '92%' }}
+            style={{ maxWidth: '640px', width: '92%' }}
           >
             <div className="modal-header">
-              <h3 style={{ margin: 0 }}>Add University Calendar Event</h3>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Add University Calendar Event</h3>
               <button
                 type="button"
                 className="btn-ghost btn-icon"
                 onClick={() => setCreateModalOpen(false)}
+                aria-label="Close dialog"
               >
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleCreateEvent}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Event Title *</label>
                   <input
                     type="text"
@@ -313,8 +314,8 @@ export const CalendarPage: React.FC = () => {
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                  <div>
+                <div className="form-grid-2">
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Category *</label>
                     <select
                       className="form-input"
@@ -331,7 +332,7 @@ export const CalendarPage: React.FC = () => {
                     </select>
                   </div>
 
-                  <div>
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Campus Venue / Location</label>
                     <input
                       type="text"
@@ -343,8 +344,8 @@ export const CalendarPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                  <div>
+                <div className="form-grid-2">
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Start Date & Time *</label>
                     <input
                       type="datetime-local"
@@ -355,7 +356,7 @@ export const CalendarPage: React.FC = () => {
                     />
                   </div>
 
-                  <div>
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">End Date & Time (Optional)</label>
                     <input
                       type="datetime-local"
@@ -366,7 +367,7 @@ export const CalendarPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Organizing Department / Office</label>
                   <input
                     type="text"
@@ -377,15 +378,16 @@ export const CalendarPage: React.FC = () => {
                   />
                 </div>
 
-                <div>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Event Description *</label>
                   <textarea
                     required
-                    rows={3}
+                    rows={4}
                     className="form-input"
                     placeholder="Provide full schedule details, reporting timings, and instructions..."
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    style={{ minHeight: '100px' }}
                   />
                 </div>
               </div>

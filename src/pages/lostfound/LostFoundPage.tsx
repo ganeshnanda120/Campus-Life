@@ -12,10 +12,11 @@ import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { useAuth } from '../../context/useAuth';
 import { lostFoundService } from '../../services/lostFoundService';
+import { hasPermission } from '../../services/permissionService';
 import type { LostFoundListing, LostFoundStatus } from '../../types';
 
 export const LostFoundPage: React.FC = () => {
-  const { userProfile, role } = useAuth();
+  const { userProfile, role, permissions } = useAuth();
   const [items, setItems] = useState<LostFoundListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'LOST' | 'FOUND'>('ALL');
@@ -36,11 +37,7 @@ export const LostFoundPage: React.FC = () => {
     contactInfo: '',
   });
 
-  const canModerate =
-    role === 'MAIN_ADMIN' ||
-    role === 'SUB_ADMIN' ||
-    role === 'STAFF' ||
-    userProfile?.permissions?.includes('MANAGE_LOST_FOUND');
+  const canModerate = hasPermission(role, permissions, 'MANAGE_LOST_FOUND');
 
   const loadItems = useCallback(async () => {
     setLoading(true);
@@ -361,24 +358,25 @@ export const LostFoundPage: React.FC = () => {
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '560px', width: '92%' }}
+            style={{ maxWidth: '640px', width: '92%' }}
           >
             <div className="modal-header">
-              <h3 style={{ margin: 0 }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>
                 {reportType === 'LOST' ? 'Report Lost Personal Belonging' : 'Register Found Item'}
               </h3>
               <button
                 type="button"
                 className="btn-ghost btn-icon"
                 onClick={() => setReportModalOpen(false)}
+                aria-label="Close dialog"
               >
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleReportSubmit}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Item Name / Title *</label>
                   <input
                     type="text"
@@ -390,8 +388,8 @@ export const LostFoundPage: React.FC = () => {
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                  <div>
+                <div className="form-grid-2">
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Category *</label>
                     <select
                       className="form-input"
@@ -407,7 +405,7 @@ export const LostFoundPage: React.FC = () => {
                     </select>
                   </div>
 
-                  <div>
+                  <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Date Incident Occurred *</label>
                     <input
                       type="date"
@@ -419,7 +417,7 @@ export const LostFoundPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Campus Location *</label>
                   <input
                     type="text"
@@ -431,19 +429,20 @@ export const LostFoundPage: React.FC = () => {
                   />
                 </div>
 
-                <div>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Description & Distinguishing Features *</label>
                   <textarea
                     required
-                    rows={3}
+                    rows={4}
                     className="form-input"
                     placeholder="Color, brand, serial markings, stickers, or case condition..."
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    style={{ minHeight: '100px' }}
                   />
                 </div>
 
-                <div>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Custodian Contact / Retrieval Instructions</label>
                   <input
                     type="text"

@@ -12,7 +12,10 @@ import {
   GraduationCap,
   Wrench,
   CheckCircle,
-  Settings2,
+  X,
+  Check,
+  Settings,
+  Key,
 } from 'lucide-react';
 import { StatCard, Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -24,10 +27,23 @@ import { Alert } from '../../components/common/Alert';
 import { CustomFieldsRenderer } from '../../components/common/CustomFieldsRenderer';
 import { FormFieldConfigModal } from '../../components/common/FormFieldConfigModal';
 import { AddCustomFieldModal } from '../../components/common/AddCustomFieldModal';
+import { PermissionManagerModal } from '../../components/common/PermissionManagerModal';
 import { useAuth } from '../../context/useAuth';
 import { userService } from '../../services/userService';
 import { formConfigService, DEFAULT_FACULTY_FIELDS } from '../../services/formConfigService';
-import type { UserRecord, UserRole, FormConfiguration } from '../../types';
+import { subscribeDegrees } from '../../services/degreeProgramService';
+import type { UserRecord, UserRole, FormConfiguration, DegreeProgram, AcademicDegreeAssignment } from '../../types';
+
+const SPECIAL_SESSION_BRANCHES = [
+  'AI & ML',
+  'Cyber Security',
+  'Data Science',
+  'IoT',
+  'Cloud Computing',
+  'Robotics & Automation',
+  'Blockchain Technology',
+  'VLSI Design',
+];
 
 interface FacultyManagementProps {
   initialTab?: 'faculty' | 'staff';
@@ -88,8 +104,10 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeactivateModalOpen, setIsDeactivateModalOpen] = useState(false);
   const [isReactivateModalOpen, setIsReactivateModalOpen] = useState(false);
+  const [isPermModalOpen, setIsPermModalOpen] = useState(false);
 
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
+  const [selectedPermUser, setSelectedPermUser] = useState<UserRecord | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -103,6 +121,23 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
   const [isFieldConfigModalOpen, setIsFieldConfigModalOpen] = useState(false);
   const [isAddCustomFieldModalOpen, setIsAddCustomFieldModalOpen] = useState(false);
   const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
+
+  // Shared Academic Degree Configuration (Consumed only, no management actions from Faculty)
+  const [degrees, setDegrees] = useState<DegreeProgram[]>([]);
+
+  // Multi-Assignment Selector States for Add / Edit
+  const [selectedDegreeToAdd, setSelectedDegreeToAdd] = useState('');
+  const [selectedBranchToAdd, setSelectedBranchToAdd] = useState('');
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
+  const [customSpecialSessionInput, setCustomSpecialSessionInput] = useState('');
+
+  // Load shared degree configuration & subscribe to realtime updates
+  useEffect(() => {
+    const unsub = subscribeDegrees((list) => {
+      setDegrees(list || []);
+    });
+    return () => unsub();
+  }, []);
 
   // Load faculty form configuration
   const loadFormConfig = useCallback(async () => {
@@ -125,7 +160,7 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
 
   const isFieldRequired = (key: string) => {
     const f = formConfig.fields.find((field) => field.key === key);
-    return f ? f.required === true : false;
+    return f ? f.required === true : key === 'degree';
   };
 
   const handleCustomFieldChange = (fieldId: string, value: any) => {
@@ -148,14 +183,472 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
     name: '',
     email: '',
     employeeId: '',
-    department: ACADEMIC_DEPARTMENTS[0],
+    degree: '',
+    department: '',
     designation: 'Assistant Professor',
-    branch: 'CSE',
+    branch: '',
     officeLocation: '',
     phone: '',
+    degreeAssignments: [] as AcademicDegreeAssignment[],
+    specialSessionBranches: [] as string[],
     customFields: {} as Record<string, any>,
   };
   const [formData, setFormData] = useState(initialFormData);
+
+  // Add a new Degree + Branch combination to the member's assignments
+  const handleAddAssignment = () => {
+    setAssignmentError(null);
+    const cleanDeg = selectedDegreeToAdd.trim();
+    if (!cleanDeg) {
+      setAssignmentError('Please select a Degree / Program first.');
+      return;
+    }
+
+    const degObj = degrees.find((d) => d.name.toLowerCase() === cleanDeg.toLowerCase());
+    const availableBranches = degObj?.branches || [];
+    let cleanBranch = selectedBranchToAdd.trim();
+
+    if (availableBranches.length > 0 && !cleanBranch) {
+      setAssignmentError(`Please select a Branch under ${cleanDeg}.`);
+      return;
+    }
+
+    if (!cleanBranch) {
+      cleanBranch = 'General';
+    }
+
+    const currentAssignments = formData.degreeAssignments || [];
+    const isDuplicate = currentAssignments.some(
+      (a) =>
+        a.degreeName.toLowerCase() === cleanDeg.toLowerCase() &&
+        a.branchName.toLowerCase() === cleanBranch.toLowerCase()
+    );
+
+    if (isDuplicate) {
+      setAssignmentError(`"${cleanDeg} → ${cleanBranch}" is already added.`);
+      return;
+    }
+
+    const newAssignment: AcademicDegreeAssignment = {
+      degreeId: degObj?.id,
+      degreeName: degObj?.name || cleanDeg,
+      branchName: cleanBranch,
+    };
+
+    const nextAssignments = [...currentAssignments, newAssignment];
+    setFormData((prev) => ({
+      ...prev,
+      degreeAssignments: nextAssignments,
+      degree: prev.degree || newAssignment.degreeName,
+      branch: prev.branch || newAssignment.branchName,
+      department: currentTab === 'faculty' ? (prev.department || newAssignment.degreeName) : prev.department,
+    }));
+  };
+
+  // Remove an individual assignment
+  const handleRemoveAssignment = (index: number) => {
+    const nextAssignments = [...(formData.degreeAssignments || [])];
+    nextAssignments.splice(index, 1);
+    setFormData((prev) => ({
+      ...prev,
+      degreeAssignments: nextAssignments,
+      degree: nextAssignments[0]?.degreeName || '',
+      branch: nextAssignments[0]?.branchName || '',
+      department: currentTab === 'faculty' ? (nextAssignments[0]?.degreeName || '') : prev.department,
+    }));
+  };
+
+  // Toggle Special Session Branch selection
+  const handleToggleSpecialSession = (branchName: string) => {
+    const current = formData.specialSessionBranches || [];
+    const exists = current.some((s) => s.toLowerCase() === branchName.toLowerCase());
+    let next: string[];
+    if (exists) {
+      next = current.filter((s) => s.toLowerCase() !== branchName.toLowerCase());
+    } else {
+      next = [...current, branchName];
+    }
+    setFormData((prev) => ({ ...prev, specialSessionBranches: next }));
+  };
+
+  // Add custom Special Session branch tag
+  const handleAddCustomSpecialSession = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = customSpecialSessionInput.trim();
+    if (!clean) return;
+    const current = formData.specialSessionBranches || [];
+    if (!current.some((s) => s.toLowerCase() === clean.toLowerCase())) {
+      setFormData((prev) => ({
+        ...prev,
+        specialSessionBranches: [...current, clean],
+      }));
+    }
+    setCustomSpecialSessionInput('');
+  };
+
+  // Render Degree & Branch Assignments and Special Session Branches (Consumed shared configuration only)
+  const renderAcademicAssignmentsUI = () => {
+    const isFaculty = currentTab === 'faculty';
+    const assignments = formData.degreeAssignments || [];
+    const activeSelectedDeg = degrees.find(
+      (d) => d.name.toLowerCase() === selectedDegreeToAdd.toLowerCase()
+    ) || degrees[0];
+    const availableBranches = activeSelectedDeg?.branches || [];
+
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.85rem',
+          padding: '1rem',
+          backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
+          borderRadius: 'var(--radius-md, 8px)',
+          border: '1px solid var(--color-border, #e2e8f0)',
+          marginTop: '0.25rem',
+          gridColumn: '1 / -1',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text-main, #0f172a)', display: 'block' }}>
+              {isFaculty ? 'Degree & Branch Assignments *' : 'Degree & Branch Assignments (Optional)'}
+            </span>
+            <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted, #64748b)' }}>
+              {isFaculty
+                ? 'Assign one or more Degrees and Branches. Multiple assignments are supported.'
+                : 'Assign academic affiliations to staff if applicable.'}
+            </span>
+          </div>
+          <Badge variant={assignments.length > 0 ? 'info' : 'neutral'}>
+            {assignments.length} {assignments.length === 1 ? 'Assignment' : 'Assignments'}
+          </Badge>
+        </div>
+
+        {/* Existing Assignments Chip / Card List */}
+        {assignments.length > 0 ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.45rem',
+              maxHeight: '160px',
+              overflowY: 'auto',
+              paddingRight: '0.25rem',
+            }}
+          >
+            {assignments.map((assignment, idx) => (
+              <div
+                key={`${assignment.degreeName}-${assignment.branchName}-${idx}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.5rem 0.75rem',
+                  backgroundColor: 'var(--color-bg-surface, #ffffff)',
+                  border: '1px solid var(--color-border, #e2e8f0)',
+                  borderRadius: 'var(--radius-sm, 6px)',
+                  gap: '0.5rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', minWidth: 0 }}>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      fontSize: '0.85rem',
+                      color: 'var(--color-primary, #2563eb)',
+                    }}
+                  >
+                    {assignment.degreeName}
+                  </span>
+                  <span style={{ color: 'var(--color-text-muted, #94a3b8)', fontSize: '0.8rem' }}>→</span>
+                  <span
+                    style={{
+                      fontSize: '0.85rem',
+                      color: 'var(--color-text-main, #1e293b)',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {assignment.branchName}
+                  </span>
+                  {idx === 0 && (
+                    <span
+                      style={{
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        backgroundColor: 'var(--color-primary-light, #eff6ff)',
+                        color: 'var(--color-primary, #2563eb)',
+                        padding: '1px 6px',
+                        borderRadius: '999px',
+                        border: '1px solid var(--color-border, #bfdbfe)',
+                      }}
+                    >
+                      Primary
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleRemoveAssignment(idx)}
+                  aria-label={`Remove assignment ${assignment.degreeName} → ${assignment.branchName}`}
+                  title="Remove this assignment"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#94a3b8',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '4px',
+                    transition: 'color 0.15s, background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#ef4444';
+                    e.currentTarget.style.backgroundColor = '#fee2e2';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = '#94a3b8';
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div
+            style={{
+              padding: '0.65rem',
+              textAlign: 'center',
+              fontSize: '0.8rem',
+              color: 'var(--color-text-muted, #64748b)',
+              backgroundColor: 'var(--color-bg-surface, #ffffff)',
+              borderRadius: 'var(--radius-sm, 6px)',
+              border: '1px dashed var(--color-border, #cbd5e1)',
+            }}
+          >
+            {isFaculty
+              ? 'No Degree & Branch assignments added yet. Select below to add.'
+              : 'No Degree & Branch assignments added.'}
+          </div>
+        )}
+
+        {/* Inline Assignment Selector: Degree -> Branch -> Add Button */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.65rem',
+            padding: '0.75rem',
+            backgroundColor: 'var(--color-bg-surface, #ffffff)',
+            borderRadius: 'var(--radius-sm, 6px)',
+            border: '1px solid var(--color-border, #e2e8f0)',
+          }}
+        >
+          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-main, #334155)' }}>
+            {assignments.length === 0 ? 'Select Degree & Branch' : 'Add Additional Degree & Branch'}
+          </span>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: '0.65rem',
+            }}
+          >
+            <div>
+              <label className="input-label" htmlFor="select-degree-assignment" style={{ fontSize: '0.78rem' }}>
+                Degree / Program
+              </label>
+              <select
+                id="select-degree-assignment"
+                className="input-field"
+                value={selectedDegreeToAdd}
+                onChange={(e) => {
+                  const newDegName = e.target.value;
+                  setSelectedDegreeToAdd(newDegName);
+                  setAssignmentError(null);
+                  const matchedDeg = degrees.find((d) => d.name.toLowerCase() === newDegName.toLowerCase());
+                  const branches = matchedDeg?.branches || [];
+                  setSelectedBranchToAdd(branches[0] || (branches.length === 0 ? 'General' : ''));
+                }}
+              >
+                {degrees.length === 0 && <option value="">No Degrees Configured</option>}
+                {degrees.map((d) => (
+                  <option key={d.id} value={d.name}>
+                    {d.name} ({d.durationYears} Years)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="input-label" htmlFor="select-branch-assignment" style={{ fontSize: '0.78rem' }}>
+                Branch / Specialization
+              </label>
+              <select
+                id="select-branch-assignment"
+                className="input-field"
+                value={selectedBranchToAdd}
+                onChange={(e) => {
+                  setSelectedBranchToAdd(e.target.value);
+                  setAssignmentError(null);
+                }}
+              >
+                {availableBranches.length === 0 ? (
+                  <option value="General">General</option>
+                ) : (
+                  availableBranches.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          </div>
+
+          {assignmentError && (
+            <div style={{ fontSize: '0.78rem', color: 'var(--color-danger, #ef4444)', fontWeight: 500 }}>
+              {assignmentError}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              leftIcon={<Plus size={14} />}
+              onClick={handleAddAssignment}
+              disabled={degrees.length === 0}
+            >
+              Add Assignment
+            </Button>
+          </div>
+        </div>
+
+        {/* Special Session Branches Multi-Select */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+            padding: '0.75rem',
+            backgroundColor: 'var(--color-bg-surface, #ffffff)',
+            borderRadius: 'var(--radius-sm, 6px)',
+            border: '1px solid var(--color-border, #e2e8f0)',
+          }}
+        >
+          <div>
+            <label className="input-label" style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.2rem' }}>
+              Special Session Branches (Multi-Select)
+            </label>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #64748b)', display: 'block' }}>
+              Assign to one or multiple Special Session branches simultaneously.
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.25rem' }}>
+            {SPECIAL_SESSION_BRANCHES.map((specBranch) => {
+              const isSelected = (formData.specialSessionBranches || []).some(
+                (s) => s.toLowerCase() === specBranch.toLowerCase()
+              );
+              return (
+                <button
+                  key={specBranch}
+                  type="button"
+                  onClick={() => handleToggleSpecialSession(specBranch)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    padding: '0.3rem 0.65rem',
+                    borderRadius: '999px',
+                    fontSize: '0.78rem',
+                    fontWeight: isSelected ? 600 : 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    border: isSelected
+                      ? '1px solid var(--color-primary, #2563eb)'
+                      : '1px solid var(--color-border, #cbd5e1)',
+                    backgroundColor: isSelected
+                      ? 'var(--color-primary-light, #eff6ff)'
+                      : 'var(--color-bg-surface, #ffffff)',
+                    color: isSelected ? 'var(--color-primary, #2563eb)' : 'var(--color-text-main, #334155)',
+                  }}
+                >
+                  {isSelected ? <Check size={12} strokeWidth={3} /> : <Plus size={12} />}
+                  <span>{specBranch}</span>
+                </button>
+              );
+            })}
+
+            {/* Custom tags added that aren't in SPECIAL_SESSION_BRANCHES */}
+            {(formData.specialSessionBranches || [])
+              .filter(
+                (b) => !SPECIAL_SESSION_BRANCHES.some((sb) => sb.toLowerCase() === b.toLowerCase())
+              )
+              .map((customTag) => (
+                <button
+                  key={customTag}
+                  type="button"
+                  onClick={() => handleToggleSpecialSession(customTag)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    padding: '0.3rem 0.65rem',
+                    borderRadius: '999px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: '1px solid var(--color-primary, #2563eb)',
+                    backgroundColor: 'var(--color-primary-light, #eff6ff)',
+                    color: 'var(--color-primary, #2563eb)',
+                  }}
+                >
+                  <Check size={12} strokeWidth={3} />
+                  <span>{customTag}</span>
+                  <X size={12} style={{ marginLeft: '2px' }} />
+                </button>
+              ))}
+          </div>
+
+          {/* Add custom special session tag input */}
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.4rem' }}>
+            <input
+              type="text"
+              className="input-field"
+              style={{ fontSize: '0.78rem', padding: '0.35rem 0.6rem' }}
+              placeholder="Add other special session branch..."
+              value={customSpecialSessionInput}
+              onChange={(e) => setCustomSpecialSessionInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddCustomSpecialSession();
+                }
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleAddCustomSpecialSession}
+              disabled={!customSpecialSessionInput.trim()}
+            >
+              Add
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Fetch KPI Stats
   const fetchStats = useCallback(async () => {
@@ -185,6 +678,7 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
         role: targetRole,
         searchQuery,
         department: deptFilter === 'ALL' ? undefined : deptFilter,
+        degree: currentTab === 'faculty' && deptFilter !== 'ALL' ? deptFilter : undefined,
         status: statusFilter,
         sortBy: 'name',
         sortOrder: 'asc',
@@ -214,15 +708,38 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
 
   // Open Add Modal
   const handleOpenAdd = () => {
+    const firstDeg = degrees[0]?.name || '';
+    const firstBranches = degrees[0]?.branches || [];
+    const firstBranch = firstBranches[0] || (firstBranches.length === 0 ? 'General' : '');
+
+    setSelectedDegreeToAdd(firstDeg);
+    setSelectedBranchToAdd(firstBranch);
+    setAssignmentError(null);
+    setCustomSpecialSessionInput('');
+
+    const initialAssignments: AcademicDegreeAssignment[] =
+      currentTab === 'faculty' && firstDeg
+        ? [
+            {
+              degreeId: degrees[0]?.id,
+              degreeName: firstDeg,
+              branchName: firstBranch,
+            },
+          ]
+        : [];
+
     setFormData({
       name: '',
       email: '',
       employeeId: '',
-      department: currentTab === 'faculty' ? ACADEMIC_DEPARTMENTS[0] : OPERATIONAL_DEPARTMENTS[0],
+      degree: initialAssignments[0]?.degreeName || '',
+      department: currentTab === 'faculty' ? (initialAssignments[0]?.degreeName || '') : OPERATIONAL_DEPARTMENTS[0],
       designation: currentTab === 'faculty' ? 'Assistant Professor' : 'Maintenance Supervisor',
-      branch: currentTab === 'faculty' ? 'CSE' : '',
+      branch: initialAssignments[0]?.branchName || '',
       officeLocation: '',
       phone: '',
+      degreeAssignments: initialAssignments,
+      specialSessionBranches: [],
       customFields: {},
     });
     setCustomFieldErrors({});
@@ -233,15 +750,45 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
   // Open Edit Modal
   const handleOpenEdit = (rec: UserRecord) => {
     setSelectedUser(rec);
+    const recAssignments: AcademicDegreeAssignment[] =
+      Array.isArray(rec.degreeAssignments) && rec.degreeAssignments.length > 0
+        ? [...rec.degreeAssignments]
+        : rec.degree
+        ? [
+            {
+              degreeName: rec.degree,
+              branchName: rec.branch || 'General',
+            },
+          ]
+        : [];
+
+    const defaultDeg = recAssignments[0]?.degreeName || degrees[0]?.name || '';
+    const activeDegObj = degrees.find((d) => d.name === defaultDeg) || degrees[0];
+    const defaultBranch = activeDegObj?.branches?.[0] || (activeDegObj?.branches?.length === 0 ? 'General' : '');
+
+    setSelectedDegreeToAdd(defaultDeg);
+    setSelectedBranchToAdd(defaultBranch);
+    setAssignmentError(null);
+    setCustomSpecialSessionInput('');
+
     setFormData({
       name: rec.name || '',
       email: rec.email || '',
       employeeId: rec.employeeId || '',
-      department: rec.department || (currentTab === 'faculty' ? ACADEMIC_DEPARTMENTS[0] : OPERATIONAL_DEPARTMENTS[0]),
+      degree: recAssignments[0]?.degreeName || rec.degree || '',
+      department:
+        rec.department ||
+        (currentTab === 'faculty'
+          ? recAssignments[0]?.degreeName || ''
+          : OPERATIONAL_DEPARTMENTS[0]),
       designation: rec.designation || '',
-      branch: rec.branch || '',
+      branch: recAssignments[0]?.branchName || rec.branch || '',
       officeLocation: rec.officeLocation || '',
       phone: rec.phone || '',
+      degreeAssignments: recAssignments,
+      specialSessionBranches: Array.isArray(rec.specialSessionBranches)
+        ? [...rec.specialSessionBranches]
+        : [],
       customFields: rec.customFields || {},
     });
     setCustomFieldErrors({});
@@ -288,6 +835,14 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
       return;
     }
 
+    if (currentTab === 'faculty' && isFieldRequired('degree')) {
+      const assignments = formData.degreeAssignments || [];
+      if (assignments.length === 0) {
+        setModalError('Please add at least one Degree & Branch assignment for this Faculty member.');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const actor = {
@@ -297,6 +852,16 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
       };
 
       const targetRole: UserRole = currentTab === 'faculty' ? 'FACULTY' : 'STAFF';
+      const isFaculty = currentTab === 'faculty';
+      const assignments = formData.degreeAssignments || [];
+      const primaryAssignment = assignments[0];
+      const cleanDegree = isFaculty
+        ? (primaryAssignment?.degreeName || formData.degree.trim() || undefined)
+        : (primaryAssignment?.degreeName || undefined);
+      const cleanBranch = isFaculty
+        ? (primaryAssignment?.branchName || (formData.branch ? formData.branch.trim() : undefined))
+        : (primaryAssignment?.branchName || undefined);
+      const cleanDept = isFaculty ? (cleanDegree || '') : formData.department.trim();
 
       const res = await userService.createUser(
         {
@@ -304,10 +869,13 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
           name: formData.name.trim(),
           email: formData.email.trim().toLowerCase(),
           employeeId: formData.employeeId.trim().toUpperCase(),
-          department: formData.department.trim(),
+          degree: cleanDegree,
+          department: cleanDept,
           designation: formData.designation.trim(),
-          branch: currentTab === 'faculty' ? formData.branch.trim() : undefined,
-          officeLocation: formData.officeLocation.trim() || undefined,
+          branch: cleanBranch,
+          degreeAssignments: assignments,
+          specialSessionBranches: formData.specialSessionBranches || [],
+          officeLocation: !isFaculty ? formData.officeLocation.trim() || undefined : undefined,
           phone: formData.phone.trim() || undefined,
           customFields: formData.customFields || {},
         },
@@ -354,6 +922,14 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
       return;
     }
 
+    if (currentTab === 'faculty' && isFieldRequired('degree')) {
+      const assignments = formData.degreeAssignments || [];
+      if (assignments.length === 0) {
+        setModalError('Please add at least one Degree & Branch assignment for this Faculty member.');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const actor = {
@@ -362,15 +938,29 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
         role: role || 'MAIN_ADMIN',
       };
 
+      const isFaculty = currentTab === 'faculty';
+      const assignments = formData.degreeAssignments || [];
+      const primaryAssignment = assignments[0];
+      const cleanDegree = isFaculty
+        ? (primaryAssignment?.degreeName || formData.degree.trim() || undefined)
+        : (primaryAssignment?.degreeName || undefined);
+      const cleanBranch = isFaculty
+        ? (primaryAssignment?.branchName || (formData.branch ? formData.branch.trim() : undefined))
+        : (primaryAssignment?.branchName || undefined);
+      const cleanDept = isFaculty ? (cleanDegree || '') : formData.department.trim();
+
       const res = await userService.updateUser(
         selectedUser.uid,
         {
           name: formData.name.trim(),
           employeeId: formData.employeeId.trim().toUpperCase(),
-          department: formData.department.trim(),
+          degree: cleanDegree,
+          department: cleanDept,
           designation: formData.designation.trim(),
-          branch: currentTab === 'faculty' ? formData.branch.trim() : undefined,
-          officeLocation: formData.officeLocation.trim() || undefined,
+          branch: cleanBranch,
+          degreeAssignments: assignments,
+          specialSessionBranches: formData.specialSessionBranches || [],
+          officeLocation: !isFaculty ? formData.officeLocation.trim() || undefined : undefined,
           phone: formData.phone.trim() || undefined,
           customFields: formData.customFields || {},
         },
@@ -477,11 +1067,11 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               : 'Institutional directory for campus operations, maintenance, hostel supervisors, and estate staff.'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
           {role === 'MAIN_ADMIN' && (
             <Button
               variant="outline"
-              leftIcon={<Settings2 size={16} />}
+              leftIcon={<Settings size={16} />}
               onClick={() => setIsFieldConfigModalOpen(true)}
             >
               Configure Fields
@@ -552,7 +1142,7 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
         <StatCard
           label={currentTab === 'faculty' ? 'Total Faculty' : 'Total Operational Staff'}
           value={currentTab === 'faculty' ? stats.facultyTotal : stats.staffTotal}
-          subtitle={`Across ${departmentsList.length} departments`}
+          subtitle={currentTab === 'faculty' ? `Across ${degrees.length} academic degrees` : `Across ${departmentsList.length} departments`}
           icon={<UserCheck size={22} />}
         />
         <StatCard
@@ -572,9 +1162,9 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
           icon={<UserX size={22} />}
         />
         <StatCard
-          label="Departments"
-          value={departmentsList.length}
-          subtitle={currentTab === 'faculty' ? 'Academic faculties' : 'Operational services'}
+          label={currentTab === 'faculty' ? 'Academic Degrees' : 'Departments'}
+          value={currentTab === 'faculty' ? degrees.length : departmentsList.length}
+          subtitle={currentTab === 'faculty' ? 'Configured programs' : 'Operational services'}
           icon={<Building size={22} />}
         />
       </div>
@@ -609,15 +1199,25 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
 
           <div style={{ flex: '1 1 220px' }}>
             <select
-              aria-label={`Filter ${currentTab} by department`}
+              aria-label={`Filter ${currentTab} by ${currentTab === 'faculty' ? 'degree' : 'department'}`}
               className="input-field"
               value={deptFilter}
               onChange={(e) => setDeptFilter(e.target.value)}
             >
-              <option value="ALL">All Departments</option>
-              {departmentsList.map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
+              <option value="ALL">
+                {currentTab === 'faculty' ? 'All Degrees / Programs' : 'All Departments'}
+              </option>
+              {currentTab === 'faculty'
+                ? degrees.map((d) => (
+                    <option key={d.id} value={d.name}>
+                      {d.name}
+                    </option>
+                  ))
+                : departmentsList.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
             </select>
           </div>
 
@@ -677,142 +1277,261 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
                   <tr>
                     <th>Name & Email</th>
                     <th>{currentTab === 'faculty' ? 'Faculty ID' : 'Staff ID'}</th>
-                    <th>Designation & Department</th>
-                    <th>{currentTab === 'faculty' ? 'Branch' : 'Office Location'}</th>
+                    <th>Designation</th>
+                    <th>{currentTab === 'faculty' ? 'Degree & Branch Assignments' : 'Department / Affiliation'}</th>
+                    <th>Special Sessions</th>
                     <th>Status</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {usersList.map((person) => (
-                    <tr key={person.uid}>
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontWeight: 600 }}>{person.name}</span>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{person.email}</span>
-                          {person.phone && (
-                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{person.phone}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <span style={{ fontWeight: 600, fontFamily: 'monospace' }}>
-                          {person.employeeId || '—'}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {usersList.map((person) => {
+                    const assignments =
+                      Array.isArray(person.degreeAssignments) && person.degreeAssignments.length > 0
+                        ? person.degreeAssignments
+                        : person.degree
+                        ? [{ degreeName: person.degree, branchName: person.branch || 'General' }]
+                        : [];
+                    const specialSessions = person.specialSessionBranches || [];
+
+                    return (
+                      <tr key={person.uid}>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: 600 }}>{person.name}</span>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{person.email}</span>
+                            {person.phone && (
+                              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{person.phone}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 600, fontFamily: 'monospace' }}>
+                            {person.employeeId || '—'}
+                          </span>
+                        </td>
+                        <td>
                           <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{person.designation || 'N/A'}</span>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{person.department || 'N/A'}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <span style={{ fontSize: '0.85rem' }}>
-                          {currentTab === 'faculty' ? person.branch || 'General' : person.officeLocation || 'Campus'}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                          {person.isActive ? (
-                            <Badge variant="success">Active</Badge>
+                        </td>
+                        <td>
+                          {currentTab === 'faculty' ? (
+                            assignments.length > 0 ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                {assignments.map((a, i) => (
+                                  <div key={i} style={{ fontSize: '0.8rem' }}>
+                                    <strong style={{ color: 'var(--color-primary)' }}>{a.degreeName}</strong>
+                                    <span style={{ color: 'var(--color-text-muted)' }}> → </span>
+                                    <span>{a.branchName}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                                {person.degree || person.department || '—'}
+                              </span>
+                            )
                           ) : (
-                            <Badge variant="danger">Inactive</Badge>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                              <span style={{ fontSize: '0.85rem' }}>{person.department || '—'}</span>
+                              {person.officeLocation && (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                  {person.officeLocation}
+                                </span>
+                              )}
+                              {assignments.length > 0 && (
+                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>
+                                  {assignments.map((a) => `${a.degreeName} (${a.branchName})`).join(', ')}
+                                </div>
+                              )}
+                            </div>
                           )}
-                          {!person.isActivated && (
-                            <span style={{ fontSize: '0.7rem', color: 'var(--color-warning)' }}>
-                              Setup Pending
-                            </span>
+                        </td>
+                        <td>
+                          {specialSessions.length > 0 ? (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', maxWidth: '180px' }}>
+                              {specialSessions.map((s) => (
+                                <span
+                                  key={s}
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    fontWeight: 500,
+                                    padding: '2px 6px',
+                                    borderRadius: '999px',
+                                    backgroundColor: 'var(--color-bg-secondary, #f1f5f9)',
+                                    color: 'var(--color-text-main, #334155)',
+                                    border: '1px solid var(--color-border, #cbd5e1)',
+                                  }}
+                                >
+                                  {s}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>—</span>
                           )}
-                        </div>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`View details for ${person.name}`}
-                            onClick={() => handleOpenView(person)}
-                          >
-                            <Eye size={15} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`Edit ${person.name}`}
-                            onClick={() => handleOpenEdit(person)}
-                          >
-                            <Edit2 size={15} />
-                          </Button>
-                          {person.isActive ? (
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                            {person.isActive ? (
+                              <Badge variant="success">Active</Badge>
+                            ) : (
+                              <Badge variant="danger">Inactive</Badge>
+                            )}
+                            {!person.isActivated && (
+                              <span style={{ fontSize: '0.7rem', color: 'var(--color-warning)' }}>
+                                Setup Pending
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', gap: '0.4rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                            {role === 'MAIN_ADMIN' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                leftIcon={<Key size={14} />}
+                                onClick={() => {
+                                  setSelectedPermUser(person);
+                                  setIsPermModalOpen(true);
+                                }}
+                              >
+                                Permissions
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"
-                              aria-label={`Deactivate ${person.name}`}
-                              style={{ color: 'var(--color-danger)' }}
-                              onClick={() => handleOpenDeactivate(person)}
+                              aria-label={`View details for ${person.name}`}
+                              onClick={() => handleOpenView(person)}
                             >
-                              <UserX size={15} />
+                              <Eye size={15} />
                             </Button>
-                          ) : (
                             <Button
                               variant="ghost"
                               size="sm"
-                              aria-label={`Reactivate ${person.name}`}
-                              style={{ color: 'var(--color-success)' }}
-                              onClick={() => handleOpenReactivate(person)}
+                              aria-label={`Edit ${person.name}`}
+                              onClick={() => handleOpenEdit(person)}
                             >
-                              <UserCheck size={15} />
+                              <Edit2 size={15} />
                             </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {person.isActive ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`Deactivate ${person.name}`}
+                                style={{ color: 'var(--color-danger)' }}
+                                onClick={() => handleOpenDeactivate(person)}
+                              >
+                                <UserX size={15} />
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`Reactivate ${person.name}`}
+                                style={{ color: 'var(--color-success)' }}
+                                onClick={() => handleOpenReactivate(person)}
+                              >
+                                <UserCheck size={15} />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
             {/* Mobile Cards View */}
-            <div className="show-on-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {usersList.map((person) => (
-                <div
-                  key={person.uid}
-                  style={{
-                    padding: '1rem',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-md)',
-                    backgroundColor: 'var(--color-bg-secondary)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.75rem',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <h4 style={{ margin: 0, fontSize: '1rem' }}>{person.name}</h4>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{person.email}</div>
-                    </div>
-                    {person.isActive ? (
-                      <Badge variant="success">Active</Badge>
-                    ) : (
-                      <Badge variant="danger">Inactive</Badge>
-                    )}
-                  </div>
+            <div className="show-on-mobile mobile-card-list">
+              {usersList.map((person) => {
+                const assignments =
+                  Array.isArray(person.degreeAssignments) && person.degreeAssignments.length > 0
+                    ? person.degreeAssignments
+                    : person.degree
+                    ? [{ degreeName: person.degree, branchName: person.branch || 'General' }]
+                    : [];
+                const specialSessions = person.specialSessionBranches || [];
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.8rem' }}>
-                    <div>
-                      <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>ID</span>
-                      <strong style={{ fontFamily: 'monospace' }}>{person.employeeId || '—'}</strong>
+                return (
+                  <div
+                    key={person.uid}
+                    style={{
+                      padding: '1rem',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 'var(--radius-md)',
+                      backgroundColor: 'var(--color-bg-secondary)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.75rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '1rem' }}>{person.name}</h4>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{person.email}</div>
+                      </div>
+                      {person.isActive ? (
+                        <Badge variant="success">Active</Badge>
+                      ) : (
+                        <Badge variant="danger">Inactive</Badge>
+                      )}
                     </div>
-                    <div>
-                      <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Designation</span>
-                      <span>{person.designation || 'Staff'}</span>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.8rem' }}>
+                      <div>
+                        <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>ID</span>
+                        <strong style={{ fontFamily: 'monospace' }}>{person.employeeId || '—'}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Designation</span>
+                        <span>{person.designation || 'Staff'}</span>
+                      </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>
+                          {currentTab === 'faculty' ? 'Degree & Branch Assignments' : 'Department'}
+                        </span>
+                        {currentTab === 'faculty' ? (
+                          assignments.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginTop: '0.2rem' }}>
+                              {assignments.map((a, i) => (
+                                <span key={i}>
+                                  <strong>{a.degreeName}</strong> → {a.branchName}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span>{person.degree ? `${person.degree} • ${person.branch || 'General'}` : person.department || '—'}</span>
+                          )
+                        ) : (
+                          <span>{person.department || '—'}</span>
+                        )}
+                      </div>
+                      {specialSessions.length > 0 && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Special Sessions</span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.2rem' }}>
+                            {specialSessions.map((s) => (
+                              <span
+                                key={s}
+                                style={{
+                                  fontSize: '0.72rem',
+                                  padding: '1px 6px',
+                                  borderRadius: '999px',
+                                  backgroundColor: 'var(--color-bg-surface)',
+                                  border: '1px solid var(--color-border)',
+                                }}
+                              >
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Department</span>
-                      <span>{person.department || '—'}</span>
-                    </div>
-                  </div>
 
                   <div
                     style={{
@@ -824,6 +1543,19 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
                       flexWrap: 'wrap',
                     }}
                   >
+                    {role === 'MAIN_ADMIN' && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        leftIcon={<Key size={14} />}
+                        onClick={() => {
+                          setSelectedPermUser(person);
+                          setIsPermModalOpen(true);
+                        }}
+                      >
+                        Permissions
+                      </Button>
+                    )}
                     <Button variant="outline" size="sm" leftIcon={<Eye size={14} />} onClick={() => handleOpenView(person)}>
                       View
                     </Button>
@@ -853,8 +1585,9 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
+          </div>
           </div>
         )}
       </Card>
@@ -923,25 +1656,54 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               </div>
             )}
 
-            {isFieldEnabled('department') && (
-              <div>
-                <label className="input-label" htmlFor="fac-dept">
-                  Department{isFieldRequired('department') ? ' *' : ''}
-                </label>
-                <select
-                  id="fac-dept"
-                  className="input-field"
-                  required={isFieldRequired('department')}
-                  value={formData.department}
-                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                >
-                  {departmentsList.map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              </div>
+            {/* If Faculty -> Degree & Branch Multi-Assignments + Special Session Branches */}
+            {currentTab === 'faculty' ? (
+              renderAcademicAssignmentsUI()
+            ) : (
+              /* If Staff -> Department & Office Location + Optional Academic Assignments */
+              <>
+                {isFieldEnabled('department') && (
+                  <div>
+                    <label className="input-label" htmlFor="fac-dept">
+                      Department{isFieldRequired('department') ? ' *' : ''}
+                    </label>
+                    <select
+                      id="fac-dept"
+                      className="input-field"
+                      required={isFieldRequired('department')}
+                      value={formData.department}
+                      onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                    >
+                      {departmentsList.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {isFieldEnabled('officeLocation') && (
+                  <div>
+                    <label className="input-label" htmlFor="fac-office">
+                      Office / Service Location{isFieldRequired('officeLocation') ? ' *' : ''}
+                    </label>
+                    <input
+                      id="fac-office"
+                      type="text"
+                      required={isFieldRequired('officeLocation')}
+                      className="input-field"
+                      placeholder="e.g. Workshop Block - Room 102"
+                      value={formData.officeLocation}
+                      onChange={(e) => setFormData({ ...formData, officeLocation: e.target.value })}
+                    />
+                  </div>
+                )}
+
+                {/* Staff Academic Assignments */}
+                {renderAcademicAssignmentsUI()}
+              </>
             )}
 
+            {/* 6. Designation * */}
             {isFieldEnabled('designation') && (
               <div>
                 <label className="input-label" htmlFor="fac-desig">
@@ -959,40 +1721,7 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               </div>
             )}
 
-            {currentTab === 'faculty' && isFieldEnabled('branch') && (
-              <div>
-                <label className="input-label" htmlFor="fac-branch">
-                  Branch / Specialization{isFieldRequired('branch') ? ' *' : ''}
-                </label>
-                <input
-                  id="fac-branch"
-                  type="text"
-                  required={isFieldRequired('branch')}
-                  className="input-field"
-                  placeholder="e.g. CSE, AI & Data Science"
-                  value={formData.branch}
-                  onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
-                />
-              </div>
-            )}
-
-            {currentTab === 'staff' && isFieldEnabled('officeLocation') && (
-              <div>
-                <label className="input-label" htmlFor="fac-office">
-                  Office / Service Location{isFieldRequired('officeLocation') ? ' *' : ''}
-                </label>
-                <input
-                  id="fac-office"
-                  type="text"
-                  required={isFieldRequired('officeLocation')}
-                  className="input-field"
-                  placeholder="e.g. Workshop Block - Room 102"
-                  value={formData.officeLocation}
-                  onChange={(e) => setFormData({ ...formData, officeLocation: e.target.value })}
-                />
-              </div>
-            )}
-
+            {/* 7. Contact Phone */}
             {isFieldEnabled('phone') && (
               <div>
                 <label className="input-label" htmlFor="fac-phone">
@@ -1091,23 +1820,50 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               </div>
             )}
 
-            {isFieldEnabled('department') && (
-              <div>
-                <label className="input-label" htmlFor="edit-fac-dept">
-                  Department{isFieldRequired('department') ? ' *' : ''}
-                </label>
-                <select
-                  id="edit-fac-dept"
-                  className="input-field"
-                  required={isFieldRequired('department')}
-                  value={formData.department}
-                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                >
-                  {departmentsList.map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              </div>
+            {/* If Faculty -> Degree & Branch Multi-Assignments + Special Session Branches */}
+            {currentTab === 'faculty' ? (
+              renderAcademicAssignmentsUI()
+            ) : (
+              /* If Staff -> Department & Office Location + Optional Academic Assignments */
+              <>
+                {isFieldEnabled('department') && (
+                  <div>
+                    <label className="input-label" htmlFor="edit-fac-dept">
+                      Department{isFieldRequired('department') ? ' *' : ''}
+                    </label>
+                    <select
+                      id="edit-fac-dept"
+                      className="input-field"
+                      required={isFieldRequired('department')}
+                      value={formData.department}
+                      onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                    >
+                      {departmentsList.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {isFieldEnabled('officeLocation') && (
+                  <div>
+                    <label className="input-label" htmlFor="edit-fac-office">
+                      Office Location{isFieldRequired('officeLocation') ? ' *' : ''}
+                    </label>
+                    <input
+                      id="edit-fac-office"
+                      type="text"
+                      required={isFieldRequired('officeLocation')}
+                      className="input-field"
+                      value={formData.officeLocation}
+                      onChange={(e) => setFormData({ ...formData, officeLocation: e.target.value })}
+                    />
+                  </div>
+                )}
+
+                {/* Staff Academic Assignments */}
+                {renderAcademicAssignmentsUI()}
+              </>
             )}
 
             {isFieldEnabled('designation') && (
@@ -1122,38 +1878,6 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
                   className="input-field"
                   value={formData.designation}
                   onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-                />
-              </div>
-            )}
-
-            {currentTab === 'faculty' && isFieldEnabled('branch') && (
-              <div>
-                <label className="input-label" htmlFor="edit-fac-branch">
-                  Branch / Specialization{isFieldRequired('branch') ? ' *' : ''}
-                </label>
-                <input
-                  id="edit-fac-branch"
-                  type="text"
-                  required={isFieldRequired('branch')}
-                  className="input-field"
-                  value={formData.branch}
-                  onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
-                />
-              </div>
-            )}
-
-            {currentTab === 'staff' && isFieldEnabled('officeLocation') && (
-              <div>
-                <label className="input-label" htmlFor="edit-fac-office">
-                  Office Location{isFieldRequired('officeLocation') ? ' *' : ''}
-                </label>
-                <input
-                  id="edit-fac-office"
-                  type="text"
-                  required={isFieldRequired('officeLocation')}
-                  className="input-field"
-                  value={formData.officeLocation}
-                  onChange={(e) => setFormData({ ...formData, officeLocation: e.target.value })}
                 />
               </div>
             )}
@@ -1250,25 +1974,30 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
                 <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Employee ID</span>
                 <strong style={{ fontFamily: 'monospace' }}>{selectedUser.employeeId || '—'}</strong>
               </div>
-              <div>
-                <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Department</span>
-                <strong>{selectedUser.department || '—'}</strong>
-              </div>
-              <div>
-                <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Designation</span>
-                <strong>{selectedUser.designation || '—'}</strong>
-              </div>
-              {selectedUser.branch && (
-                <div>
-                  <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Branch / Discipline</span>
-                  <strong>{selectedUser.branch}</strong>
-                </div>
-              )}
-              {selectedUser.officeLocation && (
-                <div>
-                  <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Office / Station</span>
-                  <strong>{selectedUser.officeLocation}</strong>
-                </div>
+              {currentTab === 'faculty' ? (
+                <>
+                  <div>
+                    <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Designation</span>
+                    <strong>{selectedUser.designation || '—'}</strong>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Department</span>
+                    <strong>{selectedUser.department || '—'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Designation</span>
+                    <strong>{selectedUser.designation || '—'}</strong>
+                  </div>
+                  {selectedUser.officeLocation && (
+                    <div>
+                      <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Office / Station</span>
+                      <strong>{selectedUser.officeLocation}</strong>
+                    </div>
+                  )}
+                </>
               )}
               <div>
                 <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Phone</span>
@@ -1279,6 +2008,68 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
                 <span>{new Date(selectedUser.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
+
+            {/* Academic Degree & Branch Assignments */}
+            {((selectedUser.degreeAssignments && selectedUser.degreeAssignments.length > 0) || selectedUser.degree) && (
+              <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.4rem' }}>
+                  Degree & Branch Assignments
+                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  {selectedUser.degreeAssignments && selectedUser.degreeAssignments.length > 0 ? (
+                    selectedUser.degreeAssignments.map((a, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          padding: '0.35rem 0.65rem',
+                          backgroundColor: 'var(--color-bg-secondary)',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        <strong style={{ color: 'var(--color-primary)' }}>{a.degreeName}</strong>
+                        <span style={{ color: 'var(--color-text-muted)' }}>→</span>
+                        <span>{a.branchName}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ fontSize: '0.85rem' }}>
+                      <strong>{selectedUser.degree}</strong> → {selectedUser.branch || 'General'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Special Session Branches */}
+            {selectedUser.specialSessionBranches && selectedUser.specialSessionBranches.length > 0 && (
+              <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.4rem' }}>
+                  Special Session Branches
+                </span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                  {selectedUser.specialSessionBranches.map((s) => (
+                    <span
+                      key={s}
+                      style={{
+                        padding: '0.25rem 0.6rem',
+                        borderRadius: '999px',
+                        backgroundColor: 'var(--color-primary-light, #eff6ff)',
+                        color: 'var(--color-primary, #2563eb)',
+                        border: '1px solid var(--color-border, #bfdbfe)',
+                        fontSize: '0.8rem',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {selectedUser.customFields && Object.keys(selectedUser.customFields).length > 0 && (
               <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
@@ -1299,7 +2090,44 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
+            {/* Granular Permissions Section */}
+            <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                  Granular Permissions
+                </span>
+                <Badge variant={(selectedUser.permissions || []).length > 0 ? 'info' : 'neutral'}>
+                  {(selectedUser.permissions || []).length} / 26 Assigned
+                </Badge>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                {(selectedUser.permissions || []).length === 0 ? (
+                  <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                    Default role capabilities only
+                  </span>
+                ) : (
+                  selectedUser.permissions?.map((p) => (
+                    <Badge key={p} variant="info" style={{ fontSize: '0.75rem' }}>
+                      {p.replace('MANAGE_', '').replace('VIEW_', '')}
+                    </Badge>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
+              {role === 'MAIN_ADMIN' && (
+                <Button
+                  variant="primary"
+                  leftIcon={<Key size={14} />}
+                  onClick={() => {
+                    setSelectedPermUser(selectedUser);
+                    setIsPermModalOpen(true);
+                  }}
+                >
+                  Manage Permissions
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setIsViewModalOpen(false)}>
                 Close
               </Button>
@@ -1416,6 +2244,39 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
           return false;
         }}
       />
+
+      {/* Permission Management Modal for Faculty & Staff */}
+      <PermissionManagerModal
+        isOpen={isPermModalOpen}
+        onClose={() => {
+          setIsPermModalOpen(false);
+          setSelectedPermUser(null);
+        }}
+        targetUser={selectedPermUser}
+        onSavePermissions={async (newPermissions) => {
+          if (!selectedPermUser) return;
+          const actor = {
+            uid: userProfile?.uid || 'admin',
+            name: userProfile?.name || 'Administrator',
+            role: role || 'MAIN_ADMIN',
+          };
+          const res = await userService.updateUserPermissions(
+            selectedPermUser.uid,
+            newPermissions,
+            actor
+          );
+          if (!res.success) {
+            throw new Error(res.error || 'Failed to update permissions.');
+          }
+          setIsPermModalOpen(false);
+          setSelectedPermUser(null);
+          setToastMessage(`Permissions updated successfully for ${selectedPermUser.name}.`);
+          setTimeout(() => setToastMessage(null), 4000);
+          loadRecords();
+          fetchStats();
+        }}
+      />
     </div>
   );
 };
+
