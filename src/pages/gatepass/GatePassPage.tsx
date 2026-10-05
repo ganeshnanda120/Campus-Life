@@ -344,7 +344,7 @@ export const GatePassPage: React.FC = () => {
       </div>
 
       {/* Operational Metrics */}
-      <div className="grid-cards">
+      <div className="grid-cards-3">
         <StatCard
           label="Pending Clearance"
           value={String(pendingCount)}

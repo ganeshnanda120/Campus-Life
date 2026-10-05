@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Key,
   Shield,
+  Settings2,
 } from 'lucide-react';
 import { StatCard, Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -18,14 +19,18 @@ import { Modal } from '../../components/common/Modal';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Skeleton } from '../../components/common/Skeleton';
 import { Alert } from '../../components/common/Alert';
+import { CustomFieldsRenderer } from '../../components/common/CustomFieldsRenderer';
+import { FormFieldConfigModal } from '../../components/common/FormFieldConfigModal';
+import { AddCustomFieldModal } from '../../components/common/AddCustomFieldModal';
 import { useAuth } from '../../context/useAuth';
 import { userService } from '../../services/userService';
+import { formConfigService, DEFAULT_SUB_ADMIN_FIELDS } from '../../services/formConfigService';
 import {
   ALL_PERMISSIONS,
   PERMISSION_CATEGORIES,
   getPermissionsByCategory,
 } from '../../services/permissionService';
-import type { UserRecord, UserPermission } from '../../types';
+import type { UserRecord, UserPermission, FormConfiguration } from '../../types';
 
 export const SubAdminManagementPage: React.FC = () => {
   const { userProfile, role } = useAuth();
@@ -52,6 +57,56 @@ export const SubAdminManagementPage: React.FC = () => {
   const [modalError, setModalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Form Field Configuration State
+  const [formConfig, setFormConfig] = useState<FormConfiguration>({
+    id: 'config_sub_admin',
+    formType: 'SUB_ADMIN',
+    fields: DEFAULT_SUB_ADMIN_FIELDS,
+    updatedAt: '',
+  });
+  const [isFieldConfigModalOpen, setIsFieldConfigModalOpen] = useState(false);
+  const [isAddCustomFieldModalOpen, setIsAddCustomFieldModalOpen] = useState(false);
+  const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
+
+  // Load sub-admin form configuration
+  const loadFormConfig = useCallback(async () => {
+    try {
+      const cfg = await formConfigService.getFormConfig('SUB_ADMIN');
+      if (cfg) setFormConfig(cfg);
+    } catch (err) {
+      console.warn('Failed to load sub-admin form config:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFormConfig();
+  }, [loadFormConfig]);
+
+  const isFieldEnabled = (key: string) => {
+    const f = formConfig.fields.find((field) => field.key === key);
+    return f ? f.enabled !== false : true;
+  };
+
+  const isFieldRequired = (key: string) => {
+    const f = formConfig.fields.find((field) => field.key === key);
+    return f ? f.required === true : false;
+  };
+
+  const handleCustomFieldChange = (fieldId: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      customFields: {
+        ...prev.customFields,
+        [fieldId]: value,
+      },
+    }));
+    setCustomFieldErrors((prev) => {
+      const copy = { ...prev };
+      delete copy[fieldId];
+      return copy;
+    });
+  };
+
   // Form State
   const initialFormData = {
     name: '',
@@ -60,6 +115,7 @@ export const SubAdminManagementPage: React.FC = () => {
     designation: 'Hostel Warden',
     phone: '',
     employeeId: '',
+    customFields: {} as Record<string, any>,
   };
   const [formData, setFormData] = useState(initialFormData);
 
@@ -92,6 +148,7 @@ export const SubAdminManagementPage: React.FC = () => {
   const handleOpenAdd = () => {
     setFormData(initialFormData);
     setSelectedPermissions([]);
+    setCustomFieldErrors({});
     setModalError(null);
     setIsAddModalOpen(true);
   };
@@ -106,7 +163,9 @@ export const SubAdminManagementPage: React.FC = () => {
       designation: admin.designation || '',
       phone: admin.phone || '',
       employeeId: admin.employeeId || '',
+      customFields: admin.customFields || {},
     });
+    setCustomFieldErrors({});
     setModalError(null);
     setIsEditModalOpen(true);
   };
@@ -160,13 +219,20 @@ export const SubAdminManagementPage: React.FC = () => {
   const handleSubmitAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError(null);
+    setCustomFieldErrors({});
 
-    if (!formData.name.trim()) {
-      setModalError('Full Name is required.');
-      return;
-    }
-    if (!formData.email.trim()) {
-      setModalError('Email address is required.');
+    // Dynamic configuration-driven validation
+    const validation = formConfigService.validateFormValues(
+      formConfig,
+      formData,
+      formData.customFields || {},
+      null
+    );
+
+    if (!validation.valid) {
+      setCustomFieldErrors(validation.errors);
+      const firstError = Object.values(validation.errors)[0];
+      setModalError(firstError || 'Please complete all required fields.');
       return;
     }
 
@@ -188,6 +254,7 @@ export const SubAdminManagementPage: React.FC = () => {
           phone: formData.phone.trim() || undefined,
           employeeId: formData.employeeId.trim() || undefined,
           permissions: selectedPermissions,
+          customFields: formData.customFields || {},
         },
         actor
       );
@@ -214,9 +281,20 @@ export const SubAdminManagementPage: React.FC = () => {
     e.preventDefault();
     if (!selectedAdmin) return;
     setModalError(null);
+    setCustomFieldErrors({});
 
-    if (!formData.name.trim()) {
-      setModalError('Full Name is required.');
+    // Dynamic configuration-driven validation
+    const validation = formConfigService.validateFormValues(
+      formConfig,
+      formData,
+      formData.customFields || {},
+      selectedAdmin
+    );
+
+    if (!validation.valid) {
+      setCustomFieldErrors(validation.errors);
+      const firstError = Object.values(validation.errors)[0];
+      setModalError(firstError || 'Please complete all required fields.');
       return;
     }
 
@@ -236,6 +314,7 @@ export const SubAdminManagementPage: React.FC = () => {
           designation: formData.designation.trim(),
           phone: formData.phone.trim() || undefined,
           employeeId: formData.employeeId.trim() || undefined,
+          customFields: formData.customFields || {},
         },
         actor
       );
@@ -371,13 +450,24 @@ export const SubAdminManagementPage: React.FC = () => {
             Delegate granular administrative responsibilities across campus modules without granting full root privileges.
           </p>
         </div>
-        <Button variant="primary" leftIcon={<Plus size={16} />} onClick={handleOpenAdd}>
-          Add Sub-Admin
-        </Button>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          {role === 'MAIN_ADMIN' && (
+            <Button
+              variant="outline"
+              leftIcon={<Settings2 size={16} />}
+              onClick={() => setIsFieldConfigModalOpen(true)}
+            >
+              Configure Fields
+            </Button>
+          )}
+          <Button variant="primary" leftIcon={<Plus size={16} />} onClick={handleOpenAdd}>
+            Add Sub-Admin
+          </Button>
+        </div>
       </div>
 
       {/* KPI Stats */}
-      <div className="grid-cards">
+      <div className="grid-cards-4">
         <StatCard
           label="Total Sub-Admins"
           value={subAdmins.length}
@@ -894,56 +984,86 @@ export const SubAdminManagementPage: React.FC = () => {
               />
             </div>
 
-            <div>
-              <label className="input-label" htmlFor="sub-dept">Department *</label>
-              <input
-                id="sub-dept"
-                type="text"
-                required
-                className="input-field"
-                placeholder="e.g. Hostel Operations"
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-              />
-            </div>
+            {isFieldEnabled('department') && (
+              <div>
+                <label className="input-label" htmlFor="sub-dept">
+                  Department{isFieldRequired('department') ? ' *' : ''}
+                </label>
+                <input
+                  id="sub-dept"
+                  type="text"
+                  required={isFieldRequired('department')}
+                  className="input-field"
+                  placeholder="e.g. Hostel Operations"
+                  value={formData.department}
+                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                />
+              </div>
+            )}
 
-            <div>
-              <label className="input-label" htmlFor="sub-desig">Designation *</label>
-              <input
-                id="sub-desig"
-                type="text"
-                required
-                className="input-field"
-                placeholder="e.g. Boys Hostel Warden"
-                value={formData.designation}
-                onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-              />
-            </div>
+            {isFieldEnabled('designation') && (
+              <div>
+                <label className="input-label" htmlFor="sub-desig">
+                  Designation{isFieldRequired('designation') ? ' *' : ''}
+                </label>
+                <input
+                  id="sub-desig"
+                  type="text"
+                  required={isFieldRequired('designation')}
+                  className="input-field"
+                  placeholder="e.g. Boys Hostel Warden"
+                  value={formData.designation}
+                  onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+                />
+              </div>
+            )}
 
-            <div>
-              <label className="input-label" htmlFor="sub-phone">Phone Number</label>
-              <input
-                id="sub-phone"
-                type="tel"
-                className="input-field"
-                placeholder="+91 98765 00000"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-            </div>
+            {isFieldEnabled('phone') && (
+              <div>
+                <label className="input-label" htmlFor="sub-phone">
+                  Phone Number{isFieldRequired('phone') ? ' *' : ''}
+                </label>
+                <input
+                  id="sub-phone"
+                  type="tel"
+                  required={isFieldRequired('phone')}
+                  className="input-field"
+                  placeholder="+91 98765 00000"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+            )}
 
-            <div>
-              <label className="input-label" htmlFor="sub-empid">Employee / Staff ID</label>
-              <input
-                id="sub-empid"
-                type="text"
-                className="input-field"
-                placeholder="e.g. ADM202601"
-                value={formData.employeeId}
-                onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-              />
-            </div>
+            {isFieldEnabled('employeeId') && (
+              <div>
+                <label className="input-label" htmlFor="sub-empid">
+                  Employee / Staff ID{isFieldRequired('employeeId') ? ' *' : ''}
+                </label>
+                <input
+                  id="sub-empid"
+                  type="text"
+                  required={isFieldRequired('employeeId')}
+                  className="input-field"
+                  placeholder="e.g. ADM202601"
+                  value={formData.employeeId}
+                  onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+                />
+              </div>
+            )}
           </div>
+
+          {/* Custom Details Section */}
+          <CustomFieldsRenderer
+            fields={formConfig.fields}
+            values={formData.customFields || {}}
+            errors={customFieldErrors}
+            onChange={handleCustomFieldChange}
+            targetUser={null}
+            onOpenAddField={() => setIsAddCustomFieldModalOpen(true)}
+            onOpenConfigureFields={() => setIsFieldConfigModalOpen(true)}
+            canManage={role === 'MAIN_ADMIN'}
+          />
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
             <Button variant="ghost" type="button" onClick={() => setIsAddModalOpen(false)}>
@@ -997,52 +1117,82 @@ export const SubAdminManagementPage: React.FC = () => {
               />
             </div>
 
-            <div>
-              <label className="input-label" htmlFor="sub-edit-dept">Department *</label>
-              <input
-                id="sub-edit-dept"
-                type="text"
-                required
-                className="input-field"
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-              />
-            </div>
+            {isFieldEnabled('department') && (
+              <div>
+                <label className="input-label" htmlFor="sub-edit-dept">
+                  Department{isFieldRequired('department') ? ' *' : ''}
+                </label>
+                <input
+                  id="sub-edit-dept"
+                  type="text"
+                  required={isFieldRequired('department')}
+                  className="input-field"
+                  value={formData.department}
+                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                />
+              </div>
+            )}
 
-            <div>
-              <label className="input-label" htmlFor="sub-edit-desig">Designation *</label>
-              <input
-                id="sub-edit-desig"
-                type="text"
-                required
-                className="input-field"
-                value={formData.designation}
-                onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-              />
-            </div>
+            {isFieldEnabled('designation') && (
+              <div>
+                <label className="input-label" htmlFor="sub-edit-desig">
+                  Designation{isFieldRequired('designation') ? ' *' : ''}
+                </label>
+                <input
+                  id="sub-edit-desig"
+                  type="text"
+                  required={isFieldRequired('designation')}
+                  className="input-field"
+                  value={formData.designation}
+                  onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+                />
+              </div>
+            )}
 
-            <div>
-              <label className="input-label" htmlFor="sub-edit-phone">Phone Number</label>
-              <input
-                id="sub-edit-phone"
-                type="tel"
-                className="input-field"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-            </div>
+            {isFieldEnabled('phone') && (
+              <div>
+                <label className="input-label" htmlFor="sub-edit-phone">
+                  Phone Number{isFieldRequired('phone') ? ' *' : ''}
+                </label>
+                <input
+                  id="sub-edit-phone"
+                  type="tel"
+                  required={isFieldRequired('phone')}
+                  className="input-field"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+            )}
 
-            <div>
-              <label className="input-label" htmlFor="sub-edit-empid">Employee ID</label>
-              <input
-                id="sub-edit-empid"
-                type="text"
-                className="input-field"
-                value={formData.employeeId}
-                onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-              />
-            </div>
+            {isFieldEnabled('employeeId') && (
+              <div>
+                <label className="input-label" htmlFor="sub-edit-empid">
+                  Employee ID{isFieldRequired('employeeId') ? ' *' : ''}
+                </label>
+                <input
+                  id="sub-edit-empid"
+                  type="text"
+                  required={isFieldRequired('employeeId')}
+                  className="input-field"
+                  value={formData.employeeId}
+                  onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+                />
+              </div>
+            )}
           </div>
+
+          {/* Custom Details Section */}
+          <CustomFieldsRenderer
+            fields={formConfig.fields}
+            values={formData.customFields || {}}
+            errors={customFieldErrors}
+            onChange={handleCustomFieldChange}
+            targetUser={selectedAdmin}
+            onOpenAddField={() => setIsAddCustomFieldModalOpen(true)}
+            onOpenConfigureFields={() => setIsFieldConfigModalOpen(true)}
+            canManage={role === 'MAIN_ADMIN'}
+          />
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
             <Button variant="ghost" type="button" onClick={() => setIsEditModalOpen(false)}>
@@ -1144,6 +1294,25 @@ export const SubAdminManagementPage: React.FC = () => {
               </div>
             </div>
 
+            {selectedAdmin.customFields && Object.keys(selectedAdmin.customFields).length > 0 && (
+              <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem' }}>Additional / Custom Information</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
+                  {Object.entries(selectedAdmin.customFields).map(([key, val]) => {
+                    const fieldDef = formConfig.fields.find((f) => f.id === key);
+                    const label = fieldDef?.label || key;
+                    const displayVal = val === true ? 'Yes' : val === false ? 'No' : String(val || '—');
+                    return (
+                      <div key={key}>
+                        <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>{label}</span>
+                        <strong>{displayVal}</strong>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
               <Button variant="outline" onClick={() => setIsViewModalOpen(false)}>
                 Close
@@ -1223,6 +1392,44 @@ export const SubAdminManagementPage: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Form Field Configuration Modal */}
+      <FormFieldConfigModal
+        isOpen={isFieldConfigModalOpen}
+        onClose={() => setIsFieldConfigModalOpen(false)}
+        formType="SUB_ADMIN"
+        config={formConfig}
+        onConfigUpdated={(newCfg) => setFormConfig(newCfg)}
+        onOpenAddCustomField={() => setIsAddCustomFieldModalOpen(true)}
+        actor={{
+          uid: userProfile?.uid || 'admin',
+          name: userProfile?.name || 'Administrator',
+          role: role || 'MAIN_ADMIN',
+        }}
+      />
+
+      {/* Add Custom Field Modal */}
+      <AddCustomFieldModal
+        isOpen={isAddCustomFieldModalOpen}
+        onClose={() => setIsAddCustomFieldModalOpen(false)}
+        formType="SUB_ADMIN"
+        availableUsers={subAdmins}
+        onSave={async (fieldDef) => {
+          const res = await formConfigService.addCustomField('SUB_ADMIN', fieldDef, {
+            uid: userProfile?.uid || 'admin',
+            name: userProfile?.name || 'Administrator',
+            role: role || 'MAIN_ADMIN',
+          });
+          if (res.success && res.config) {
+            setFormConfig(res.config);
+            setToastMessage(`Custom field "${fieldDef.label}" added successfully.`);
+            setTimeout(() => setToastMessage(null), 4000);
+            return true;
+          }
+          alert(res.error || 'Failed to add custom field.');
+          return false;
+        }}
+      />
     </div>
   );
 };

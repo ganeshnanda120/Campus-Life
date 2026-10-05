@@ -65,9 +65,30 @@ export const Modal: React.FC<ModalProps> = ({
             className="btn-ghost btn-icon"
             onClick={onClose}
             aria-label="Close dialog"
-            style={{ borderRadius: 'var(--radius-full)' }}
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '9999px',
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-muted, #64748b)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'background-color 0.15s ease, color 0.15s ease',
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--bg-subtle, rgba(0, 0, 0, 0.05))';
+              e.currentTarget.style.color = 'var(--text-primary, #0f172a)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = 'var(--text-muted, #64748b)';
+            }}
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
         <div className="modal-body">{children}</div>

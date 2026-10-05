@@ -24,33 +24,44 @@ export const AppLayout: React.FC = () => {
   }, [userProfile?.uid]);
 
   const handleLogout = async () => {
+    try {
+      sessionStorage.setItem('campus_life_logged_out', 'true');
+    } catch {
+      // ignore
+    }
+    navigate('/login', { replace: true, state: { isLogout: true } });
     await logout();
-    navigate('/login', { replace: true });
   };
 
   return (
-    <div className="app-shell">
-      <Sidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+    <div className="app-shell h-screen w-screen overflow-hidden flex flex-col bg-slate-50 dark:bg-slate-950">
+      {/* 2. Top Header at fixed height */}
+      <Header
+        onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+        unreadNotificationsCount={unreadCount}
+        userName={userProfile?.name || 'Campus Member'}
         userRole={role || 'STUDENT'}
+        onLogout={handleLogout}
       />
 
-      <div className="main-wrapper">
-        <Header
-          onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-          unreadNotificationsCount={unreadCount}
-          userName={userProfile?.name || 'Campus Member'}
+      {/* Decoupled side-by-side work zone */}
+      <div className="layout-body flex-1 flex flex-row overflow-hidden min-h-0 relative">
+        {/* 3. Sidebar Navigation constrained to calc(100vh - 4rem) */}
+        <Sidebar
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
           userRole={role || 'STUDENT'}
-          onLogout={handleLogout}
         />
 
-        <main className="content-container">
-          <Outlet />
+        {/* 4. Main Content Area independently scrollable */}
+        <main className="main-viewport flex-1 h-[calc(100vh-4rem)] overflow-y-auto bg-slate-50 dark:bg-slate-950">
+          <div className="content-container">
+            <Outlet />
+          </div>
         </main>
-
-        <BottomNav onOpenMenu={() => setSidebarOpen(true)} />
       </div>
+
+      <BottomNav onOpenMenu={() => setSidebarOpen(true)} />
     </div>
   );
 };

@@ -12,6 +12,7 @@ import {
   GraduationCap,
   ChevronLeft,
   ChevronRight,
+  Settings2,
 } from 'lucide-react';
 import { StatCard, Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -22,18 +23,25 @@ import { Skeleton } from '../../components/common/Skeleton';
 import { Alert } from '../../components/common/Alert';
 import { useAuth } from '../../context/useAuth';
 import { userService } from '../../services/userService';
-import type { UserRecord, StudentCategory } from '../../types';
-
-const DEPARTMENTS = [
-  'Computer Science & Engineering',
-  'Electrical Engineering',
-  'Mechanical Engineering',
-  'Civil Engineering',
-  'Electronics & Telecommunication',
-  'Information Technology',
-];
-
-const BRANCHES = ['CSE', 'EE', 'ME', 'CE', 'ETC', 'IT'];
+import {
+  degreeProgramService,
+  getAvailableYears,
+  getAvailableSemesters,
+  DEFAULT_DEGREES,
+} from '../../services/degreeProgramService';
+import {
+  formConfigService,
+  DEFAULT_STUDENT_FIELDS,
+} from '../../services/formConfigService';
+import { CustomFieldsRenderer } from '../../components/common/CustomFieldsRenderer';
+import { FormFieldConfigModal } from '../../components/common/FormFieldConfigModal';
+import { AddCustomFieldModal } from '../../components/common/AddCustomFieldModal';
+import type {
+  UserRecord,
+  StudentCategory,
+  DegreeProgram,
+  FormConfiguration,
+} from '../../types';
 
 export const StudentManagementPage: React.FC = () => {
   const { userProfile, role } = useAuth();
@@ -55,6 +63,21 @@ export const StudentManagementPage: React.FC = () => {
     dayScholars: 0,
     inactive: 0,
   });
+
+  // Dynamic Degree/Program System
+  const [degrees, setDegrees] = useState<DegreeProgram[]>(DEFAULT_DEGREES);
+  const [isAddDegreeModalOpen, setIsAddDegreeModalOpen] = useState(false);
+  const [degreeFormName, setDegreeFormName] = useState('');
+  const [durationOption, setDurationOption] = useState<'1' | '2' | '3' | '4' | '5' | 'custom'>('4');
+  const [customDurationInput, setCustomDurationInput] = useState('');
+  const [initialBranchInput, setInitialBranchInput] = useState('');
+  const [degreeModalError, setDegreeModalError] = useState<string | null>(null);
+  const [isDegreeSubmitting, setIsDegreeSubmitting] = useState(false);
+
+  const [isAddBranchModalOpen, setIsAddBranchModalOpen] = useState(false);
+  const [branchFormName, setBranchFormName] = useState('');
+  const [branchModalError, setBranchModalError] = useState<string | null>(null);
+  const [isBranchSubmitting, setIsBranchSubmitting] = useState(false);
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,8 +107,9 @@ export const StudentManagementPage: React.FC = () => {
     email: '',
     studentId: '',
     rollNumber: '',
-    department: DEPARTMENTS[0],
-    branch: BRANCHES[0],
+    degree: 'B.Tech',
+    department: 'B.Tech',
+    branch: 'Computer Science & Engineering',
     year: 1,
     semester: 1,
     studentCategory: 'HOSTELER' as StudentCategory,
@@ -98,9 +122,104 @@ export const StudentManagementPage: React.FC = () => {
     hostelName: 'BPUT Central Hostel',
     hostelBlock: 'Block A',
     roomNumber: '',
+    customFields: {} as Record<string, any>,
   };
 
   const [formData, setFormData] = useState(initialFormData);
+
+  // Form Field Configuration State
+  const [formConfig, setFormConfig] = useState<FormConfiguration>({
+    id: 'config_student',
+    formType: 'STUDENT',
+    fields: DEFAULT_STUDENT_FIELDS,
+    updatedAt: '',
+  });
+  const [isFieldConfigModalOpen, setIsFieldConfigModalOpen] = useState(false);
+  const [isAddCustomFieldModalOpen, setIsAddCustomFieldModalOpen] = useState(false);
+  const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
+
+  // Load student form configuration
+  const loadFormConfig = useCallback(async () => {
+    try {
+      const cfg = await formConfigService.getFormConfig('STUDENT');
+      if (cfg) setFormConfig(cfg);
+    } catch (err) {
+      console.warn('Failed to load student form config:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFormConfig();
+  }, [loadFormConfig]);
+
+  const isFieldEnabled = (key: string) => {
+    const f = formConfig.fields.find((field) => field.key === key);
+    return f ? f.enabled !== false : true;
+  };
+
+  const isFieldRequired = (key: string) => {
+    const f = formConfig.fields.find((field) => field.key === key);
+    return f ? f.required === true : false;
+  };
+
+  const handleCustomFieldChange = (fieldId: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      customFields: {
+        ...prev.customFields,
+        [fieldId]: value,
+      },
+    }));
+    setCustomFieldErrors((prev) => {
+      const copy = { ...prev };
+      delete copy[fieldId];
+      return copy;
+    });
+  };
+
+  // Load dynamic degree configurations
+  const loadDegrees = useCallback(async () => {
+    try {
+      const data = await degreeProgramService.getDegrees();
+      if (data && data.length > 0) {
+        setDegrees(data);
+      }
+    } catch (err) {
+      console.warn('Failed to load degrees:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDegrees();
+  }, [loadDegrees]);
+
+  const canManageAcademic = role === 'MAIN_ADMIN' || role === 'SUB_ADMIN';
+
+  // Compute active degree branches and allowed years/semesters dynamically
+  const activeDegree =
+    degrees.find((d) => d.name.toLowerCase() === (formData.degree || 'b.tech').toLowerCase()) ||
+    degrees[0] ||
+    DEFAULT_DEGREES[0];
+  const currentBranches = activeDegree.branches || [];
+  const availableYears = getAvailableYears(activeDegree.durationYears);
+  const availableSemesters = getAvailableSemesters(activeDegree.durationYears);
+
+  // Degree Change Handler: clears invalid branch/year/semesters
+  const handleDegreeChange = (newDegreeName: string) => {
+    const deg = degrees.find((d) => d.name === newDegreeName) || DEFAULT_DEGREES[0];
+    const duration = deg.durationYears;
+    const branches = deg.branches || [];
+    const maxSemesters = duration * 2;
+
+    setFormData((prev) => ({
+      ...prev,
+      degree: newDegreeName,
+      department: newDegreeName,
+      branch: branches.length > 0 ? (branches.includes(prev.branch) ? prev.branch : branches[0]) : '',
+      year: prev.year > duration ? 1 : prev.year,
+      semester: prev.semester > maxSemesters ? 1 : prev.semester,
+    }));
+  };
 
   // Fetch KPI statistics
   const fetchStats = useCallback(async () => {
@@ -130,6 +249,7 @@ export const StudentManagementPage: React.FC = () => {
       const res = await userService.queryUsers({
         role: 'STUDENT',
         searchQuery,
+        degree: departmentFilter === 'ALL' ? undefined : departmentFilter,
         department: departmentFilter === 'ALL' ? undefined : departmentFilter,
         branch: branchFilter === 'ALL' ? undefined : branchFilter,
         year: yearFilter === 'ALL' ? undefined : Number(yearFilter),
@@ -184,19 +304,28 @@ export const StudentManagementPage: React.FC = () => {
   const handleOpenAddModal = () => {
     setFormData(initialFormData);
     setModalError(null);
+    setCustomFieldErrors({});
     setIsAddModalOpen(true);
   };
 
   // Open Edit Modal
   const handleOpenEditModal = (student: UserRecord) => {
     setSelectedStudent(student);
+    const degreeVal = student.degree || 'B.Tech';
+    const activeDegree = degrees.find((d) => d.name === degreeVal) || degrees[0];
+    const branches = activeDegree?.branches || [];
+    const branchVal = student.branch && branches.includes(student.branch)
+      ? student.branch
+      : (branches[0] || student.branch || '');
+
     setFormData({
       name: student.name || '',
       email: student.email || '',
       studentId: student.studentId || '',
       rollNumber: student.rollNumber || '',
-      department: student.department || DEPARTMENTS[0],
-      branch: student.branch || BRANCHES[0],
+      degree: degreeVal,
+      department: degreeVal,
+      branch: branchVal,
       year: student.year || 1,
       semester: student.semester || 1,
       studentCategory: student.studentCategory || 'HOSTELER',
@@ -209,8 +338,10 @@ export const StudentManagementPage: React.FC = () => {
       hostelName: student.hostelName || '',
       hostelBlock: student.hostelBlock || '',
       roomNumber: student.roomNumber || '',
+      customFields: student.customFields || {},
     });
     setModalError(null);
+    setCustomFieldErrors({});
     setIsEditModalOpen(true);
   };
 
@@ -232,30 +363,134 @@ export const StudentManagementPage: React.FC = () => {
     setIsReactivateModalOpen(true);
   };
 
+  // Handle Add New Degree
+  const handleCreateDegree = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDegreeModalError(null);
+
+    const cleanName = degreeFormName.trim();
+    if (!cleanName) {
+      setDegreeModalError('Degree / Program Name is required.');
+      return;
+    }
+
+    let durationNum: number;
+    if (durationOption === 'custom') {
+      if (!customDurationInput.trim()) {
+        setDegreeModalError('Please enter a duration in years.');
+        return;
+      }
+      durationNum = Number(customDurationInput.trim());
+      if (!Number.isInteger(durationNum) || durationNum <= 0) {
+        setDegreeModalError('Duration must be a positive whole number greater than 0 (e.g. 1, 2, 3, 6, 7). Decimals and zero are not allowed.');
+        return;
+      }
+    } else {
+      durationNum = Number(durationOption);
+    }
+
+    setIsDegreeSubmitting(true);
+    try {
+      const actor = {
+        uid: userProfile?.uid || 'admin',
+        name: userProfile?.name || 'Administrator',
+        role: role || 'MAIN_ADMIN',
+      };
+
+      const res = await degreeProgramService.addDegree(cleanName, durationNum, actor);
+      if (!res.success || !res.degree) {
+        setDegreeModalError(res.error || 'Failed to add degree.');
+        setIsDegreeSubmitting(false);
+        return;
+      }
+
+      if (initialBranchInput.trim()) {
+        await degreeProgramService.addBranch(cleanName, initialBranchInput.trim(), actor);
+      }
+
+      const updatedList = await degreeProgramService.getDegrees();
+      setDegrees(updatedList);
+
+      handleDegreeChange(cleanName);
+
+      setIsAddDegreeModalOpen(false);
+      setDegreeFormName('');
+      setDurationOption('4');
+      setCustomDurationInput('');
+      setInitialBranchInput('');
+      setToastMessage(`Degree "${cleanName}" (${durationNum} Years) created successfully.`);
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err: any) {
+      setDegreeModalError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsDegreeSubmitting(false);
+    }
+  };
+
+  // Handle Add New Branch
+  const handleCreateBranch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBranchModalError(null);
+
+    const cleanBranch = branchFormName.trim();
+    if (!cleanBranch) {
+      setBranchModalError('Branch Name is required.');
+      return;
+    }
+
+    setIsBranchSubmitting(true);
+    try {
+      const actor = {
+        uid: userProfile?.uid || 'admin',
+        name: userProfile?.name || 'Administrator',
+        role: role || 'MAIN_ADMIN',
+      };
+
+      const res = await degreeProgramService.addBranch(formData.degree, cleanBranch, actor);
+      if (!res.success || !res.degree) {
+        setBranchModalError(res.error || 'Failed to add branch.');
+        setIsBranchSubmitting(false);
+        return;
+      }
+
+      const updatedList = await degreeProgramService.getDegrees();
+      setDegrees(updatedList);
+
+      setFormData((prev) => ({ ...prev, branch: cleanBranch }));
+
+      setIsAddBranchModalOpen(false);
+      setBranchFormName('');
+      setToastMessage(`Branch "${cleanBranch}" added under ${formData.degree}.`);
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err: any) {
+      setBranchModalError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsBranchSubmitting(false);
+    }
+  };
+
   // Submit Add Student Form
   const handleSubmitAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError(null);
+    setCustomFieldErrors({});
 
-    // Validation
-    if (!formData.name.trim()) {
-      setModalError('Full Name is required.');
-      return;
-    }
-    if (!formData.email.trim()) {
-      setModalError('Email address is required.');
-      return;
-    }
-    if (!formData.studentId.trim()) {
-      setModalError('Student ID is required.');
-      return;
-    }
-    if (!formData.rollNumber.trim()) {
-      setModalError('University Roll Number is required.');
+    // Dynamic configuration-driven validation
+    const validation = formConfigService.validateFormValues(
+      formConfig,
+      formData,
+      formData.customFields || {},
+      null
+    );
+
+    if (!validation.valid) {
+      setCustomFieldErrors(validation.errors);
+      const firstError = Object.values(validation.errors)[0];
+      setModalError(firstError || 'Please complete all required fields.');
       return;
     }
 
-    if (formData.studentCategory === 'HOSTELER' && !formData.roomNumber.trim()) {
+    if (isFieldEnabled('studentCategory') && formData.studentCategory === 'HOSTELER' && isFieldRequired('roomNumber') && !formData.roomNumber.trim()) {
       setModalError('Room Number is required for Hostel residents.');
       return;
     }
@@ -275,7 +510,8 @@ export const StudentManagementPage: React.FC = () => {
           email: formData.email.trim().toLowerCase(),
           studentId: formData.studentId.trim().toUpperCase(),
           rollNumber: formData.rollNumber.trim().toUpperCase(),
-          department: formData.department,
+          degree: formData.degree,
+          department: formData.degree,
           branch: formData.branch,
           year: Number(formData.year),
           semester: Number(formData.semester),
@@ -289,6 +525,7 @@ export const StudentManagementPage: React.FC = () => {
           hostelName: formData.studentCategory === 'HOSTELER' ? formData.hostelName : undefined,
           hostelBlock: formData.studentCategory === 'HOSTELER' ? formData.hostelBlock : undefined,
           roomNumber: formData.studentCategory === 'HOSTELER' ? formData.roomNumber.trim() : undefined,
+          customFields: formData.customFields || {},
         },
         actor
       );
@@ -316,17 +553,25 @@ export const StudentManagementPage: React.FC = () => {
     e.preventDefault();
     if (!selectedStudent) return;
     setModalError(null);
+    setCustomFieldErrors({});
 
-    if (!formData.name.trim()) {
-      setModalError('Full Name is required.');
+    // Dynamic configuration-driven validation
+    const validation = formConfigService.validateFormValues(
+      formConfig,
+      formData,
+      formData.customFields || {},
+      selectedStudent
+    );
+
+    if (!validation.valid) {
+      setCustomFieldErrors(validation.errors);
+      const firstError = Object.values(validation.errors)[0];
+      setModalError(firstError || 'Please complete all required fields.');
       return;
     }
-    if (!formData.studentId.trim()) {
-      setModalError('Student ID is required.');
-      return;
-    }
-    if (!formData.rollNumber.trim()) {
-      setModalError('University Roll Number is required.');
+
+    if (isFieldEnabled('studentCategory') && formData.studentCategory === 'HOSTELER' && isFieldRequired('roomNumber') && !formData.roomNumber.trim()) {
+      setModalError('Room Number is required for Hostel residents.');
       return;
     }
 
@@ -344,7 +589,8 @@ export const StudentManagementPage: React.FC = () => {
           name: formData.name.trim(),
           studentId: formData.studentId.trim().toUpperCase(),
           rollNumber: formData.rollNumber.trim().toUpperCase(),
-          department: formData.department,
+          degree: formData.degree,
+          department: formData.degree,
           branch: formData.branch,
           year: Number(formData.year),
           semester: Number(formData.semester),
@@ -358,6 +604,7 @@ export const StudentManagementPage: React.FC = () => {
           hostelName: formData.studentCategory === 'HOSTELER' ? formData.hostelName : '',
           hostelBlock: formData.studentCategory === 'HOSTELER' ? formData.hostelBlock : '',
           roomNumber: formData.studentCategory === 'HOSTELER' ? formData.roomNumber.trim() : '',
+          customFields: formData.customFields || {},
         },
         actor
       );
@@ -453,18 +700,29 @@ export const StudentManagementPage: React.FC = () => {
             Centralized student registry, category allocation, status control, and academic records.
           </p>
         </div>
-        <Button
-          id="btn-add-student"
-          variant="primary"
-          leftIcon={<Plus size={16} />}
-          onClick={handleOpenAddModal}
-        >
-          Add Student
-        </Button>
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+          {canManageAcademic && (
+            <Button
+              variant="outline"
+              leftIcon={<Settings2 size={16} />}
+              onClick={() => setIsFieldConfigModalOpen(true)}
+            >
+              Configure Fields
+            </Button>
+          )}
+          <Button
+            id="btn-add-student"
+            variant="primary"
+            leftIcon={<Plus size={16} />}
+            onClick={handleOpenAddModal}
+          >
+            Add Student
+          </Button>
+        </div>
       </div>
 
       {/* Live KPI Statistics Cards */}
-      <div className="grid-cards">
+      <div className="grid-cards-4">
         <StatCard
           label="Total Students"
           value={stats.totalStudents}
@@ -562,24 +820,31 @@ export const StudentManagementPage: React.FC = () => {
               borderTop: '1px solid var(--color-border)',
             }}
           >
-            {/* Department */}
+            {/* Degree / Program */}
             <div>
               <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.25rem' }}>
-                Department
+                Degree / Program
               </label>
               <select
-                aria-label="Filter by department"
+                aria-label="Filter by degree or program"
                 className="input-field"
                 value={departmentFilter}
                 onChange={(e) => {
-                  setDepartmentFilter(e.target.value);
+                  const newDeg = e.target.value;
+                  setDepartmentFilter(newDeg);
+                  if (newDeg !== 'ALL') {
+                    const targetDegObj = degrees.find((d) => d.name === newDeg);
+                    if (targetDegObj && branchFilter !== 'ALL' && !targetDegObj.branches.includes(branchFilter)) {
+                      setBranchFilter('ALL');
+                    }
+                  }
                   setCurrentPage(1);
                 }}
                 style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
               >
-                <option value="ALL">All Departments</option>
-                {DEPARTMENTS.map((dept) => (
-                  <option key={dept} value={dept}>{dept}</option>
+                <option value="ALL">All Degrees</option>
+                {degrees.map((deg) => (
+                  <option key={deg.id} value={deg.name}>{deg.name}</option>
                 ))}
               </select>
             </div>
@@ -600,7 +865,11 @@ export const StudentManagementPage: React.FC = () => {
                 style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
               >
                 <option value="ALL">All Branches</option>
-                {BRANCHES.map((b) => (
+                {(
+                  departmentFilter !== 'ALL'
+                    ? degrees.find((d) => d.name === departmentFilter)?.branches || []
+                    : Array.from(new Set(degrees.flatMap((d) => d.branches || [])))
+                ).map((b) => (
                   <option key={b} value={b}>{b}</option>
                 ))}
               </select>
@@ -762,9 +1031,11 @@ export const StudentManagementPage: React.FC = () => {
                       </td>
                       <td>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{stu.department || 'N/A'}</span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main)' }}>
+                            {stu.degree || 'B.Tech'}
+                          </span>
                           <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                            {stu.branch} • Year {stu.year || '—'} (Sem {stu.semester || '—'})
+                            {stu.branch ? `${stu.branch} • ` : ''}Year {stu.year || '—'} (Sem {stu.semester || '—'})
                           </span>
                         </div>
                       </td>
@@ -880,8 +1151,8 @@ export const StudentManagementPage: React.FC = () => {
                       <strong style={{ fontFamily: 'monospace' }}>{stu.rollNumber || '—'}</strong>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Department</span>
-                      <span>{stu.branch} • Year {stu.year || '—'}</span>
+                      <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Degree / Program</span>
+                      <span>{stu.degree || 'B.Tech'} • {stu.branch || '—'} (Year {stu.year || '—'})</span>
                     </div>
                     <div>
                       <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Category</span>
@@ -1089,17 +1360,42 @@ export const StudentManagementPage: React.FC = () => {
             </h4>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
               <div>
-                <label className="input-label" htmlFor="add-dept">Department *</label>
+                <label className="input-label" htmlFor="add-degree">Degree / Program *</label>
                 <select
-                  id="add-dept"
+                  id="add-degree"
                   className="input-field"
-                  value={formData.department}
-                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                  value={formData.degree}
+                  onChange={(e) => handleDegreeChange(e.target.value)}
                 >
-                  {DEPARTMENTS.map((d) => (
-                    <option key={d} value={d}>{d}</option>
+                  {degrees.map((d) => (
+                    <option key={d.id} value={d.name}>{d.name} ({d.durationYears} Years)</option>
                   ))}
                 </select>
+                {canManageAcademic && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDegreeModalError(null);
+                      setIsAddDegreeModalOpen(true);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px 0',
+                      color: 'var(--brand-primary, #2563eb)',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      marginTop: '0.25rem',
+                    }}
+                  >
+                    <Plus size={13} />
+                    <span>Add New Degree</span>
+                  </button>
+                )}
               </div>
 
               <div>
@@ -1110,37 +1406,65 @@ export const StudentManagementPage: React.FC = () => {
                   value={formData.branch}
                   onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
                 >
-                  {BRANCHES.map((b) => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
+                  {currentBranches.length === 0 ? (
+                    <option value="">No branches configured</option>
+                  ) : (
+                    currentBranches.map((b) => (
+                      <option key={b} value={b}>{b}</option>
+                    ))
+                  )}
                 </select>
+                {canManageAcademic && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBranchModalError(null);
+                      setIsAddBranchModalOpen(true);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px 0',
+                      color: 'var(--brand-primary, #2563eb)',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      marginTop: '0.25rem',
+                    }}
+                  >
+                    <Plus size={13} />
+                    <span>Add New Branch</span>
+                  </button>
+                )}
               </div>
 
               <div>
-                <label className="input-label" htmlFor="add-year">Year (1-4) *</label>
+                <label className="input-label" htmlFor="add-year">Year *</label>
                 <select
                   id="add-year"
                   className="input-field"
                   value={formData.year}
                   onChange={(e) => setFormData({ ...formData, year: Number(e.target.value) })}
                 >
-                  <option value={1}>1st Year</option>
-                  <option value={2}>2nd Year</option>
-                  <option value={3}>3rd Year</option>
-                  <option value={4}>4th Year</option>
+                  {availableYears.map((y) => (
+                    <option key={y.value} value={y.value}>{y.label}</option>
+                  ))}
                 </select>
               </div>
 
               <div>
-                <label className="input-label" htmlFor="add-semester">Semester (1-8) *</label>
+                <label className="input-label" htmlFor="add-semester">Semester *</label>
                 <select
                   id="add-semester"
                   className="input-field"
                   value={formData.semester}
                   onChange={(e) => setFormData({ ...formData, semester: Number(e.target.value) })}
                 >
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
-                    <option key={s} value={s}>Semester {s}</option>
+                  {availableSemesters.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
                   ))}
                 </select>
               </div>
@@ -1251,6 +1575,18 @@ export const StudentManagementPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Section: Custom Details */}
+          <CustomFieldsRenderer
+            fields={formConfig.fields}
+            values={formData.customFields || {}}
+            onChange={handleCustomFieldChange}
+            errors={customFieldErrors}
+            targetUser={null}
+            onOpenAddField={() => setIsAddCustomFieldModalOpen(true)}
+            onOpenConfigureFields={() => setIsFieldConfigModalOpen(true)}
+            canManage={canManageAcademic}
+          />
+
           {/* Footer actions */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
             <Button variant="ghost" type="button" onClick={() => setIsAddModalOpen(false)}>
@@ -1329,17 +1665,42 @@ export const StudentManagementPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="input-label" htmlFor="edit-dept">Department *</label>
+              <label className="input-label" htmlFor="edit-degree">Degree / Program *</label>
               <select
-                id="edit-dept"
+                id="edit-degree"
                 className="input-field"
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                value={formData.degree}
+                onChange={(e) => handleDegreeChange(e.target.value)}
               >
-                {DEPARTMENTS.map((d) => (
-                  <option key={d} value={d}>{d}</option>
+                {degrees.map((d) => (
+                  <option key={d.id} value={d.name}>{d.name} ({d.durationYears} Years)</option>
                 ))}
               </select>
+              {canManageAcademic && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDegreeModalError(null);
+                    setIsAddDegreeModalOpen(true);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '4px 0',
+                    color: 'var(--brand-primary, #2563eb)',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    marginTop: '0.25rem',
+                  }}
+                >
+                  <Plus size={13} />
+                  <span>Add New Degree</span>
+                </button>
+              )}
             </div>
 
             <div>
@@ -1350,10 +1711,39 @@ export const StudentManagementPage: React.FC = () => {
                 value={formData.branch}
                 onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
               >
-                {BRANCHES.map((b) => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
+                {currentBranches.length === 0 ? (
+                  <option value="">No branches configured</option>
+                ) : (
+                  currentBranches.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))
+                )}
               </select>
+              {canManageAcademic && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBranchModalError(null);
+                    setIsAddBranchModalOpen(true);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '4px 0',
+                    color: 'var(--brand-primary, #2563eb)',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    marginTop: '0.25rem',
+                  }}
+                >
+                  <Plus size={13} />
+                  <span>Add New Branch</span>
+                </button>
+              )}
             </div>
 
             <div>
@@ -1364,10 +1754,9 @@ export const StudentManagementPage: React.FC = () => {
                 value={formData.year}
                 onChange={(e) => setFormData({ ...formData, year: Number(e.target.value) })}
               >
-                <option value={1}>1st Year</option>
-                <option value={2}>2nd Year</option>
-                <option value={3}>3rd Year</option>
-                <option value={4}>4th Year</option>
+                {availableYears.map((y) => (
+                  <option key={y.value} value={y.value}>{y.label}</option>
+                ))}
               </select>
             </div>
 
@@ -1379,8 +1768,8 @@ export const StudentManagementPage: React.FC = () => {
                 value={formData.semester}
                 onChange={(e) => setFormData({ ...formData, semester: Number(e.target.value) })}
               >
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
-                  <option key={s} value={s}>Semester {s}</option>
+                {availableSemesters.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
               </select>
             </div>
@@ -1447,6 +1836,18 @@ export const StudentManagementPage: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Section: Custom Details */}
+          <CustomFieldsRenderer
+            fields={formConfig.fields}
+            values={formData.customFields || {}}
+            onChange={handleCustomFieldChange}
+            errors={customFieldErrors}
+            targetUser={selectedStudent}
+            onOpenAddField={() => setIsAddCustomFieldModalOpen(true)}
+            onOpenConfigureFields={() => setIsFieldConfigModalOpen(true)}
+            canManage={canManageAcademic}
+          />
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
             <Button variant="ghost" type="button" onClick={() => setIsEditModalOpen(false)}>
@@ -1520,8 +1921,8 @@ export const StudentManagementPage: React.FC = () => {
                 <strong style={{ fontFamily: 'monospace' }}>{selectedStudent.rollNumber || '—'}</strong>
               </div>
               <div>
-                <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Department</span>
-                <strong>{selectedStudent.department || '—'}</strong>
+                <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Degree / Program</span>
+                <strong>{selectedStudent.degree || selectedStudent.department || '—'}</strong>
               </div>
               <div>
                 <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>Branch</span>
@@ -1566,6 +1967,27 @@ export const StudentManagementPage: React.FC = () => {
                 <span>{new Date(selectedStudent.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
+
+            {/* Custom Details in View Modal */}
+            {selectedStudent.customFields && Object.keys(selectedStudent.customFields).length > 0 && (
+              <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-primary, #2563eb)', display: 'block', marginBottom: '0.5rem' }}>
+                  Custom Details
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
+                  {Object.entries(selectedStudent.customFields).map(([fId, val]) => {
+                    const fieldDef = formConfig.fields.find((f) => f.id === fId || f.key === fId);
+                    const label = fieldDef?.label || fId;
+                    return (
+                      <div key={fId}>
+                        <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>{label}</span>
+                        <strong>{String(val || '—')}</strong>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
               <Button variant="outline" onClick={() => setIsViewModalOpen(false)}>
@@ -1647,6 +2069,235 @@ export const StudentManagementPage: React.FC = () => {
           </div>
         </div>
       </Modal>
+      {/* ========================================================================= */}
+      {/* ADD NEW DEGREE / PROGRAM MODAL                                            */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isAddDegreeModalOpen}
+        onClose={() => setIsAddDegreeModalOpen(false)}
+        title="Add New Degree / Program"
+      >
+        <form onSubmit={handleCreateDegree} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {degreeModalError && (
+            <Alert variant="danger" dismissible onDismiss={() => setDegreeModalError(null)}>
+              {degreeModalError}
+            </Alert>
+          )}
+
+          <div>
+            <label className="input-label" htmlFor="modal-new-degree-name">
+              Degree / Program Name *
+            </label>
+            <input
+              id="modal-new-degree-name"
+              type="text"
+              required
+              className="input-field"
+              placeholder="e.g. BCA, MBA, MCA, M.Tech"
+              value={degreeFormName}
+              onChange={(e) => setDegreeFormName(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="input-label">Duration *</label>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+              {(['1', '2', '3', '4', '5'] as const).map((yr) => (
+                <button
+                  key={yr}
+                  type="button"
+                  onClick={() => setDurationOption(yr)}
+                  style={{
+                    padding: '0.4rem 0.85rem',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    borderRadius: '0.375rem',
+                    border: durationOption === yr ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                    backgroundColor: durationOption === yr ? '#eff6ff' : '#ffffff',
+                    color: durationOption === yr ? '#1d4ed8' : '#334155',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {yr} {yr === '1' ? 'Year' : 'Years'}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setDurationOption('custom')}
+                style={{
+                  padding: '0.4rem 0.85rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  borderRadius: '0.375rem',
+                  border: durationOption === 'custom' ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                  backgroundColor: durationOption === 'custom' ? '#eff6ff' : '#ffffff',
+                  color: durationOption === 'custom' ? '#1d4ed8' : '#334155',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                Custom / Enter Duration
+              </button>
+            </div>
+
+            {durationOption === 'custom' && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <label className="input-label" htmlFor="modal-custom-duration">
+                  Enter Duration (Years) *
+                </label>
+                <input
+                  id="modal-custom-duration"
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  className="input-field"
+                  placeholder="e.g. 6, 7, 8, 10, 12"
+                  value={customDurationInput}
+                  onChange={(e) => setCustomDurationInput(e.target.value)}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #64748b)', marginTop: '0.25rem', display: 'block' }}>
+                  Must be a positive whole number greater than 0 (e.g. 6, 7, 8, 10). Decimals and zero are not allowed.
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="input-label" htmlFor="modal-initial-branch">
+              Initial Branch (Optional)
+            </label>
+            <input
+              id="modal-initial-branch"
+              type="text"
+              className="input-field"
+              placeholder="e.g. General, Finance, Data Science"
+              value={initialBranchInput}
+              onChange={(e) => setInitialBranchInput(e.target.value)}
+            />
+          </div>
+
+          <div className="modal-footer" style={{ marginTop: '0.5rem' }}>
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => setIsAddDegreeModalOpen(false)}
+              disabled={isDegreeSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              type="submit"
+              isLoading={isDegreeSubmitting}
+            >
+              Create Degree
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* ADD NEW BRANCH MODAL                                                      */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isAddBranchModalOpen}
+        onClose={() => setIsAddBranchModalOpen(false)}
+        title="Add New Branch"
+      >
+        <form onSubmit={handleCreateBranch} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {branchModalError && (
+            <Alert variant="danger" dismissible onDismiss={() => setBranchModalError(null)}>
+              {branchModalError}
+            </Alert>
+          )}
+
+          <div style={{ padding: '0.75rem', backgroundColor: 'var(--color-bg-secondary, #f8fafc)', borderRadius: '0.5rem', border: '1px solid var(--color-border, #e2e8f0)' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted, #64748b)', display: 'block' }}>
+              Target Degree / Program
+            </span>
+            <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--color-primary, #2563eb)' }}>
+              {formData.degree || 'B.Tech'}
+            </span>
+          </div>
+
+          <div>
+            <label className="input-label" htmlFor="modal-new-branch-name">
+              Branch Name *
+            </label>
+            <input
+              id="modal-new-branch-name"
+              type="text"
+              required
+              className="input-field"
+              placeholder="e.g. Artificial Intelligence & Machine Learning"
+              value={branchFormName}
+              onChange={(e) => setBranchFormName(e.target.value)}
+            />
+          </div>
+
+          <div className="modal-footer" style={{ marginTop: '0.5rem' }}>
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => setIsAddBranchModalOpen(false)}
+              disabled={isBranchSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              type="submit"
+              isLoading={isBranchSubmitting}
+            >
+              Add Branch
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* FORM FIELD CONFIGURATION MODAL                                            */}
+      {/* ========================================================================= */}
+      <FormFieldConfigModal
+        isOpen={isFieldConfigModalOpen}
+        onClose={() => setIsFieldConfigModalOpen(false)}
+        formType="STUDENT"
+        config={formConfig}
+        onConfigUpdated={(newCfg) => setFormConfig(newCfg)}
+        onOpenAddCustomField={() => setIsAddCustomFieldModalOpen(true)}
+        actor={{
+          uid: userProfile?.uid || 'admin',
+          name: userProfile?.name || 'Administrator',
+          role: role || 'MAIN_ADMIN',
+        }}
+      />
+
+      {/* ========================================================================= */}
+      {/* ADD CUSTOM FIELD MODAL                                                    */}
+      {/* ========================================================================= */}
+      <AddCustomFieldModal
+        isOpen={isAddCustomFieldModalOpen}
+        onClose={() => setIsAddCustomFieldModalOpen(false)}
+        formType="STUDENT"
+        availableUsers={students}
+        onSave={async (fieldDef) => {
+          const res = await formConfigService.addCustomField('STUDENT', fieldDef, {
+            uid: userProfile?.uid || 'admin',
+            name: userProfile?.name || 'Administrator',
+            role: role || 'MAIN_ADMIN',
+          });
+          if (res.success && res.config) {
+            setFormConfig(res.config);
+            setToastMessage(`Custom field "${fieldDef.label}" added successfully.`);
+            setTimeout(() => setToastMessage(null), 4000);
+            return true;
+          }
+          alert(res.error || 'Failed to add custom field.');
+          return false;
+        }}
+      />
     </div>
   );
 };

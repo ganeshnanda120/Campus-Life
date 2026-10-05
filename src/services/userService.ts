@@ -14,6 +14,11 @@ import { auditService } from './auditService';
 import { requestService } from './requestService';
 import { complaintService } from './complaintService';
 import { gatePassService } from './gatePassService';
+import {
+  normalizeStudentAcademicRecord,
+  doesDegreeMatch,
+  doesBranchMatch,
+} from './degreeProgramService';
 import type {
   UserRecord,
   UserRole,
@@ -31,12 +36,13 @@ export interface QueryUsersParams {
   role?: UserRole | UserRole[];
   searchQuery?: string;
   department?: string;
+  degree?: string;
   branch?: string;
   year?: number | string;
   semester?: number | string;
   studentCategory?: StudentCategory | '';
   status?: 'active' | 'inactive' | 'all';
-  sortBy?: 'name' | 'studentId' | 'rollNumber' | 'employeeId' | 'department' | 'branch' | 'year' | 'createdAt' | 'isActive';
+  sortBy?: 'name' | 'studentId' | 'rollNumber' | 'employeeId' | 'department' | 'degree' | 'branch' | 'year' | 'createdAt' | 'isActive';
   sortOrder?: 'asc' | 'desc';
   page?: number;
   pageSize?: number;
@@ -80,7 +86,8 @@ class UserService {
         if (!snapshot.empty) {
           const list: UserRecord[] = [];
           snapshot.forEach((d) => {
-            list.push(d.data() as UserRecord);
+            const raw = d.data() as UserRecord;
+            list.push(raw.role === 'STUDENT' ? normalizeStudentAcademicRecord(raw) : raw);
           });
           return list;
         }
@@ -88,7 +95,7 @@ class UserService {
         console.warn('Firestore getAllUsers failed, falling back to local store:', err);
       }
     }
-    return getLocalUsers();
+    return getLocalUsers().map((u) => (u.role === 'STUDENT' ? normalizeStudentAcademicRecord(u) : u));
   }
 
   /**
@@ -100,14 +107,16 @@ class UserService {
         const docRef = doc(db, 'users', uid);
         const snapshot = await getDoc(docRef);
         if (snapshot.exists()) {
-          return snapshot.data() as UserRecord;
+          const raw = snapshot.data() as UserRecord;
+          return raw.role === 'STUDENT' ? normalizeStudentAcademicRecord(raw) : raw;
         }
       } catch (err) {
         console.warn('Firestore getUserById failed, falling back to local store:', err);
       }
     }
     const all = getLocalUsers();
-    return all.find((u) => u.uid === uid) || null;
+    const found = all.find((u) => u.uid === uid) || null;
+    return found && found.role === 'STUDENT' ? normalizeStudentAcademicRecord(found) : found;
   }
 
   /**
@@ -177,6 +186,7 @@ class UserService {
       role,
       searchQuery = '',
       department,
+      degree,
       branch,
       year,
       semester,
@@ -206,16 +216,25 @@ class UserService {
       users = users.filter((u) => !u.isActive);
     }
 
-    // 3. Department filter
-    if (department && department !== 'ALL') {
-      users = users.filter(
-        (u) => u.department && u.department.toLowerCase() === department.toLowerCase()
-      );
+    // 3. Degree / Department filter
+    const degreeOrDept = degree || department;
+    if (degreeOrDept && degreeOrDept !== 'ALL') {
+      users = users.filter((u) => {
+        if (u.role === 'STUDENT') {
+          return doesDegreeMatch(u.degree, u.department, degreeOrDept);
+        }
+        return u.department && u.department.toLowerCase() === degreeOrDept.toLowerCase();
+      });
     }
 
     // 4. Branch filter
     if (branch && branch !== 'ALL') {
-      users = users.filter((u) => u.branch && u.branch.toLowerCase() === branch.toLowerCase());
+      users = users.filter((u) => {
+        if (u.role === 'STUDENT') {
+          return doesBranchMatch(u.branch, u.department, branch);
+        }
+        return u.branch && u.branch.toLowerCase() === branch.toLowerCase();
+      });
     }
 
     // 5. Year filter
@@ -235,7 +254,7 @@ class UserService {
       users = users.filter((u) => u.studentCategory === studentCategory);
     }
 
-    // 8. Search query (matches name, email, studentId, rollNumber, employeeId, department, branch)
+    // 8. Search query (matches name, email, studentId, rollNumber, employeeId, degree, department, branch)
     if (searchQuery.trim()) {
       const queryLower = searchQuery.trim().toLowerCase();
       users = users.filter((u) => {
@@ -245,6 +264,7 @@ class UserService {
           (u.studentId && u.studentId.toLowerCase().includes(queryLower)) ||
           (u.rollNumber && u.rollNumber.toLowerCase().includes(queryLower)) ||
           (u.employeeId && u.employeeId.toLowerCase().includes(queryLower)) ||
+          (u.degree && u.degree.toLowerCase().includes(queryLower)) ||
           (u.department && u.department.toLowerCase().includes(queryLower)) ||
           (u.branch && u.branch.toLowerCase().includes(queryLower))
         );

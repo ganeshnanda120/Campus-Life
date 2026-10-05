@@ -346,7 +346,7 @@ export const RequestsPage: React.FC = () => {
             Refresh
           </Button>
 
-          {role === 'STUDENT' && (
+          {(role === 'STUDENT' || activeTab === 'my_requests') && (
             <Button
               variant="primary"
               size="sm"
@@ -401,7 +401,7 @@ export const RequestsPage: React.FC = () => {
       )}
 
       {/* KPI Stats */}
-      <div className="grid-cards">
+      <div className="grid-cards-3">
         <StatCard
           label="Pending Review"
           value={pendingCount}
@@ -497,7 +497,11 @@ export const RequestsPage: React.FC = () => {
         ) : filteredRequests.length === 0 ? (
           <EmptyState
             title="No Requests Found"
-            description="No applications match your filter criteria. Click 'New Certificate Request' to apply."
+            description={
+              role === 'STUDENT' || activeTab === 'my_requests'
+                ? "No applications match your filter criteria. Click 'New Certificate Request' to apply."
+                : 'No student applications match your filter criteria.'
+            }
             icon={<FileText size={40} />}
           />
         ) : (

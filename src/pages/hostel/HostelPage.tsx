@@ -237,7 +237,7 @@ export const HostelPage: React.FC = () => {
       </div>
 
       {/* Operational Overview Cards */}
-      <div className="grid-cards">
+      <div className="grid-cards-3">
         <StatCard
           label="Assigned Accommodation"
           value={allocation ? `${allocation.block} • Room ${allocation.roomNumber}` : 'Unassigned'}

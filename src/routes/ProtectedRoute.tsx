@@ -41,7 +41,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Section 17: Redirect unauthenticated users
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    let isLoggedOut = false;
+    try {
+      isLoggedOut = sessionStorage.getItem('campus_life_logged_out') === 'true';
+    } catch {
+      // ignore
+    }
+    return <Navigate to="/login" state={isLoggedOut ? { isLogout: true } : { from: location }} replace />;
   }
 
   // Section 18: Role guard validation

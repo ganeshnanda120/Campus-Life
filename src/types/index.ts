@@ -41,6 +41,7 @@ export interface UserRecord {
   name: string;
   phone?: string;
   department?: string;
+  degree?: string;
   branch?: string;
   year?: number;
   semester?: number;
@@ -60,10 +61,49 @@ export interface UserRecord {
   address?: string;
   guardianName?: string;
   guardianPhone?: string;
+  customFields?: Record<string, any>;
   isActivated: boolean;
   isActive: boolean;
   emailVerified?: boolean;
   createdAt: string;
+  updatedAt: string;
+}
+
+export type CustomFieldType =
+  | 'text'
+  | 'number'
+  | 'email'
+  | 'phone'
+  | 'date'
+  | 'textarea'
+  | 'dropdown';
+
+export type CustomFieldScopeType = 'ALL' | 'SELECTED';
+
+export interface FormFieldDefinition {
+  id: string;
+  key: string;
+  label: string;
+  type: CustomFieldType;
+  required: boolean;
+  enabled: boolean;
+  isCustom: boolean;
+  isProtected?: boolean;
+  protectedReason?: string;
+  options?: string[];
+  scope: CustomFieldScopeType;
+  selectedUserIds?: string[];
+  section?: string;
+  placeholder?: string;
+  order: number;
+}
+
+export type FormConfigType = 'STUDENT' | 'FACULTY' | 'SUB_ADMIN';
+
+export interface FormConfiguration {
+  id: string;
+  formType: FormConfigType;
+  fields: FormFieldDefinition[];
   updatedAt: string;
 }
 
@@ -586,4 +626,13 @@ export interface CampusFAQ {
   status?: 'ACTIVE' | 'ARCHIVED';
   updatedAt?: string;
   helpfulCount?: number;
+}
+
+export interface DegreeProgram {
+  id: string;
+  name: string;
+  durationYears: number;
+  branches: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }

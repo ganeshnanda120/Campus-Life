@@ -1,12 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  Search,
-  ChevronDown,
-  ChevronUp,
-  ThumbsUp,
-} from 'lucide-react';
-import { Badge } from '../../components/common/Badge';
+import { Search } from 'lucide-react';
 import { faqService } from '../../services/faqService';
+import { FaqAccordionItem } from '../../components/help/FaqAccordionItem';
 import type { CampusFAQ } from '../../types';
 
 export const HelpCenterPage: React.FC = () => {
@@ -103,7 +98,7 @@ export const HelpCenterPage: React.FC = () => {
       </div>
 
       {/* Category Pills */}
-      <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.25rem', scrollbarWidth: 'none' }}>
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', paddingBottom: '0.25rem' }}>
         {categories.map((cat) => (
           <button
             key={cat}
@@ -140,107 +135,16 @@ export const HelpCenterPage: React.FC = () => {
             </p>
           </div>
         ) : (
-          faqs.map((faq) => {
-            const isOpen = openId === faq.id;
-            const isHelpful = helpfulMap[faq.id];
-
-            return (
-              <div key={faq.id} className="card" style={{ overflow: 'hidden' }}>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => toggleAccordion(faq.id)}
-                  style={{
-                    width: '100%',
-                    padding: '1.15rem 1.25rem',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    textAlign: 'left',
-                    borderRadius: 0,
-                    gap: '1rem',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
-                    <Badge variant="neutral" style={{ flexShrink: 0 }}>
-                      {faq.category}
-                    </Badge>
-                    <span style={{ fontWeight: 600, fontSize: '0.975rem', color: 'var(--text-primary)' }}>
-                      {faq.question}
-                    </span>
-                  </div>
-                  {isOpen ? <ChevronUp size={18} style={{ flexShrink: 0 }} /> : <ChevronDown size={18} style={{ flexShrink: 0 }} />}
-                </button>
-
-                {isOpen && (
-                  <div
-                    style={{
-                      padding: '0 1.25rem 1.25rem 1.25rem',
-                      borderTop: '1px solid var(--border-subtle)',
-                      backgroundColor: 'var(--bg-surface-elevated)',
-                    }}
-                  >
-                    <p
-                      style={{
-                        fontSize: '0.925rem',
-                        color: 'var(--text-secondary)',
-                        lineHeight: 1.65,
-                        margin: '1rem 0 0.75rem 0',
-                      }}
-                    >
-                      {faq.answer}
-                    </p>
-
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: '0.5rem',
-                        paddingTop: '0.75rem',
-                        borderTop: '1px solid var(--border-subtle)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                        {faq.tags?.map((t) => (
-                          <span
-                            key={t}
-                            style={{
-                              fontSize: '0.75rem',
-                              color: 'var(--text-muted)',
-                              backgroundColor: 'var(--bg-subtle)',
-                              padding: '0.15rem 0.45rem',
-                              borderRadius: 'var(--radius-sm)',
-                            }}
-                          >
-                            #{t}
-                          </span>
-                        ))}
-                      </div>
-
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        onClick={(e) => handleMarkHelpful(faq.id, e)}
-                        style={{
-                          fontSize: '0.8rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.35rem',
-                          color: isHelpful ? 'var(--brand-primary)' : 'var(--text-muted)',
-                          padding: '0.2rem 0.5rem',
-                        }}
-                      >
-                        <ThumbsUp size={14} />
-                        <span>{isHelpful ? 'Marked helpful' : 'Helpful'} ({faq.helpfulCount || 0})</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })
+          faqs.map((faq) => (
+            <FaqAccordionItem
+              key={faq.id}
+              faq={faq}
+              isOpen={openId === faq.id}
+              onToggle={() => toggleAccordion(faq.id)}
+              isHelpful={helpfulMap[faq.id]}
+              onMarkHelpful={handleMarkHelpful}
+            />
+          ))
         )}
       </div>
     </div>

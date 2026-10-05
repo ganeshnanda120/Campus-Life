@@ -18,6 +18,7 @@ import {
   Compass,
   CheckCircle,
   HelpCircle,
+  UserCheck,
 } from 'lucide-react';
 import { StatCard, Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -765,7 +766,7 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       {/* Primary KPI Grid */}
-      <div className="grid-cards">
+      <div className="grid-cards-4">
         <StatCard
           label="Total Students"
           value={adminStats.totalStudents}
@@ -777,6 +778,19 @@ export const DashboardPage: React.FC = () => {
           }
           icon={<Users size={22} />}
           onClick={() => navigate('/admin/students')}
+        />
+
+        <StatCard
+          label="Faculty & Staff"
+          value={adminStats.totalFaculty + adminStats.totalStaff}
+          subtitle={
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+              <Badge variant="info">Faculty: {adminStats.totalFaculty}</Badge>
+              <Badge variant="neutral">Staff: {adminStats.totalStaff}</Badge>
+            </div>
+          }
+          icon={<UserCheck size={22} />}
+          onClick={() => navigate('/admin/faculty')}
         />
 
         <StatCard
@@ -928,7 +942,7 @@ export const DashboardPage: React.FC = () => {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
               gap: '1rem',
             }}
           >

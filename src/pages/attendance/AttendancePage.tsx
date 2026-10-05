@@ -195,7 +195,7 @@ export const AttendancePage: React.FC = () => {
       </div>
 
       {/* KPI Stats (Section 7 & 8) */}
-      <div className="grid-cards">
+      <div className="grid-cards-3">
         <StatCard
           label="Overall Attendance"
           value={summary ? `${summary.overallPercentage}%` : '0%'}

@@ -424,7 +424,7 @@ export const ComplaintsPage: React.FC = () => {
       </div>
 
       {/* Operational SLA & Ageing Matrix */}
-      <div className="grid-cards">
+      <div className="grid-cards-4">
         <StatCard
           label="On-Time SLA (0–2 Days)"
           value={String(onTimeCount)}

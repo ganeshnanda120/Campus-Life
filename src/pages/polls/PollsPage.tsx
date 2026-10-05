@@ -137,7 +137,7 @@ export const PollsPage: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%', maxWidth: '100%' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
@@ -375,11 +375,33 @@ export const PollsPage: React.FC = () => {
                     {formData.options.length < 6 && (
                       <button
                         type="button"
-                        className="btn-ghost"
                         onClick={handleAddOption}
-                        style={{ fontSize: '0.8rem', color: 'var(--brand-primary)', fontWeight: 600, padding: 0 }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.3rem',
+                          padding: '0.3rem 0.75rem',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          borderRadius: '0.375rem',
+                          color: '#2563eb',
+                          backgroundColor: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#dbeafe';
+                          e.currentTarget.style.borderColor = '#93c5fd';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#eff6ff';
+                          e.currentTarget.style.borderColor = '#bfdbfe';
+                        }}
                       >
-                        + Add Choice
+                        <Plus size={14} />
+                        <span>Add Choice</span>
                       </button>
                     )}
                   </div>
@@ -400,7 +422,30 @@ export const PollsPage: React.FC = () => {
                             type="button"
                             className="btn-ghost btn-icon"
                             onClick={() => handleRemoveOption(idx)}
-                            style={{ color: 'var(--status-danger)' }}
+                            aria-label={`Remove option ${idx + 1}`}
+                            title="Remove choice"
+                            style={{
+                              width: '38px',
+                              height: '38px',
+                              borderRadius: '0.375rem',
+                              border: '1px solid #fee2e2',
+                              backgroundColor: '#fef2f2',
+                              color: '#dc2626',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                              transition: 'all 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#fee2e2';
+                              e.currentTarget.style.borderColor = '#fca5a5';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = '#fef2f2';
+                              e.currentTarget.style.borderColor = '#fee2e2';
+                            }}
                           >
                             <X size={16} />
                           </button>

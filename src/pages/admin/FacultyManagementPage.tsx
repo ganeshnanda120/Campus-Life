@@ -12,6 +12,7 @@ import {
   GraduationCap,
   Wrench,
   CheckCircle,
+  Settings2,
 } from 'lucide-react';
 import { StatCard, Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -20,9 +21,13 @@ import { Modal } from '../../components/common/Modal';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Skeleton } from '../../components/common/Skeleton';
 import { Alert } from '../../components/common/Alert';
+import { CustomFieldsRenderer } from '../../components/common/CustomFieldsRenderer';
+import { FormFieldConfigModal } from '../../components/common/FormFieldConfigModal';
+import { AddCustomFieldModal } from '../../components/common/AddCustomFieldModal';
 import { useAuth } from '../../context/useAuth';
 import { userService } from '../../services/userService';
-import type { UserRecord, UserRole } from '../../types';
+import { formConfigService, DEFAULT_FACULTY_FIELDS } from '../../services/formConfigService';
+import type { UserRecord, UserRole, FormConfiguration } from '../../types';
 
 interface FacultyManagementProps {
   initialTab?: 'faculty' | 'staff';
@@ -88,6 +93,56 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
   const [modalError, setModalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Form Field Configuration State
+  const [formConfig, setFormConfig] = useState<FormConfiguration>({
+    id: 'config_faculty',
+    formType: 'FACULTY',
+    fields: DEFAULT_FACULTY_FIELDS,
+    updatedAt: '',
+  });
+  const [isFieldConfigModalOpen, setIsFieldConfigModalOpen] = useState(false);
+  const [isAddCustomFieldModalOpen, setIsAddCustomFieldModalOpen] = useState(false);
+  const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
+
+  // Load faculty form configuration
+  const loadFormConfig = useCallback(async () => {
+    try {
+      const cfg = await formConfigService.getFormConfig('FACULTY');
+      if (cfg) setFormConfig(cfg);
+    } catch (err) {
+      console.warn('Failed to load faculty form config:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFormConfig();
+  }, [loadFormConfig]);
+
+  const isFieldEnabled = (key: string) => {
+    const f = formConfig.fields.find((field) => field.key === key);
+    return f ? f.enabled !== false : true;
+  };
+
+  const isFieldRequired = (key: string) => {
+    const f = formConfig.fields.find((field) => field.key === key);
+    return f ? f.required === true : false;
+  };
+
+  const handleCustomFieldChange = (fieldId: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      customFields: {
+        ...prev.customFields,
+        [fieldId]: value,
+      },
+    }));
+    setCustomFieldErrors((prev) => {
+      const copy = { ...prev };
+      delete copy[fieldId];
+      return copy;
+    });
+  };
+
   // Form State
   const initialFormData = {
     name: '',
@@ -98,6 +153,7 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
     branch: 'CSE',
     officeLocation: '',
     phone: '',
+    customFields: {} as Record<string, any>,
   };
   const [formData, setFormData] = useState(initialFormData);
 
@@ -167,7 +223,9 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
       branch: currentTab === 'faculty' ? 'CSE' : '',
       officeLocation: '',
       phone: '',
+      customFields: {},
     });
+    setCustomFieldErrors({});
     setModalError(null);
     setIsAddModalOpen(true);
   };
@@ -184,7 +242,9 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
       branch: rec.branch || '',
       officeLocation: rec.officeLocation || '',
       phone: rec.phone || '',
+      customFields: rec.customFields || {},
     });
+    setCustomFieldErrors({});
     setModalError(null);
     setIsEditModalOpen(true);
   };
@@ -211,17 +271,20 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
   const handleSubmitAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError(null);
+    setCustomFieldErrors({});
 
-    if (!formData.name.trim()) {
-      setModalError('Full Name is required.');
-      return;
-    }
-    if (!formData.email.trim()) {
-      setModalError('Email address is required.');
-      return;
-    }
-    if (!formData.employeeId.trim()) {
-      setModalError(`${currentTab === 'faculty' ? 'Faculty ID' : 'Staff ID'} is required.`);
+    // Dynamic configuration-driven validation
+    const validation = formConfigService.validateFormValues(
+      formConfig,
+      formData,
+      formData.customFields || {},
+      null
+    );
+
+    if (!validation.valid) {
+      setCustomFieldErrors(validation.errors);
+      const firstError = Object.values(validation.errors)[0];
+      setModalError(firstError || 'Please complete all required fields.');
       return;
     }
 
@@ -246,6 +309,7 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
           branch: currentTab === 'faculty' ? formData.branch.trim() : undefined,
           officeLocation: formData.officeLocation.trim() || undefined,
           phone: formData.phone.trim() || undefined,
+          customFields: formData.customFields || {},
         },
         actor
       );
@@ -273,13 +337,20 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
     e.preventDefault();
     if (!selectedUser) return;
     setModalError(null);
+    setCustomFieldErrors({});
 
-    if (!formData.name.trim()) {
-      setModalError('Full Name is required.');
-      return;
-    }
-    if (!formData.employeeId.trim()) {
-      setModalError('ID is required.');
+    // Dynamic configuration-driven validation
+    const validation = formConfigService.validateFormValues(
+      formConfig,
+      formData,
+      formData.customFields || {},
+      selectedUser
+    );
+
+    if (!validation.valid) {
+      setCustomFieldErrors(validation.errors);
+      const firstError = Object.values(validation.errors)[0];
+      setModalError(firstError || 'Please complete all required fields.');
       return;
     }
 
@@ -301,6 +372,7 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
           branch: currentTab === 'faculty' ? formData.branch.trim() : undefined,
           officeLocation: formData.officeLocation.trim() || undefined,
           phone: formData.phone.trim() || undefined,
+          customFields: formData.customFields || {},
         },
         actor
       );
@@ -405,9 +477,20 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               : 'Institutional directory for campus operations, maintenance, hostel supervisors, and estate staff.'}
           </p>
         </div>
-        <Button variant="primary" leftIcon={<Plus size={16} />} onClick={handleOpenAdd}>
-          {currentTab === 'faculty' ? 'Add Faculty' : 'Add Staff'}
-        </Button>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          {role === 'MAIN_ADMIN' && (
+            <Button
+              variant="outline"
+              leftIcon={<Settings2 size={16} />}
+              onClick={() => setIsFieldConfigModalOpen(true)}
+            >
+              Configure Fields
+            </Button>
+          )}
+          <Button variant="primary" leftIcon={<Plus size={16} />} onClick={handleOpenAdd}>
+            {currentTab === 'faculty' ? 'Add Faculty' : 'Add Staff'}
+          </Button>
+        </div>
       </div>
 
       {/* Role Navigation Tabs */}
@@ -465,7 +548,7 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
       </div>
 
       {/* KPI Stats */}
-      <div className="grid-cards">
+      <div className="grid-cards-4">
         <StatCard
           label={currentTab === 'faculty' ? 'Total Faculty' : 'Total Operational Staff'}
           value={currentTab === 'faculty' ? stats.facultyTotal : stats.staffTotal}
@@ -823,54 +906,68 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               />
             </div>
 
-            <div>
-              <label className="input-label" htmlFor="fac-empid">
-                {currentTab === 'faculty' ? 'Faculty / Employee ID *' : 'Staff ID *'}
-              </label>
-              <input
-                id="fac-empid"
-                type="text"
-                required
-                className="input-field"
-                placeholder={currentTab === 'faculty' ? 'e.g. FAC202601' : 'e.g. STF202601'}
-                value={formData.employeeId}
-                onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-              />
-            </div>
-
-            <div>
-              <label className="input-label" htmlFor="fac-dept">Department *</label>
-              <select
-                id="fac-dept"
-                className="input-field"
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-              >
-                {departmentsList.map((d) => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="input-label" htmlFor="fac-desig">Designation *</label>
-              <input
-                id="fac-desig"
-                type="text"
-                required
-                className="input-field"
-                placeholder={currentTab === 'faculty' ? 'e.g. Professor & HOD' : 'e.g. Chief Maintenance Supervisor'}
-                value={formData.designation}
-                onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-              />
-            </div>
-
-            {currentTab === 'faculty' && (
+            {isFieldEnabled('employeeId') && (
               <div>
-                <label className="input-label" htmlFor="fac-branch">Branch / Specialization</label>
+                <label className="input-label" htmlFor="fac-empid">
+                  {currentTab === 'faculty' ? 'Faculty / Employee ID' : 'Staff ID'}{isFieldRequired('employeeId') ? ' *' : ''}
+                </label>
+                <input
+                  id="fac-empid"
+                  type="text"
+                  required={isFieldRequired('employeeId')}
+                  className="input-field"
+                  placeholder={currentTab === 'faculty' ? 'e.g. FAC202601' : 'e.g. STF202601'}
+                  value={formData.employeeId}
+                  onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+                />
+              </div>
+            )}
+
+            {isFieldEnabled('department') && (
+              <div>
+                <label className="input-label" htmlFor="fac-dept">
+                  Department{isFieldRequired('department') ? ' *' : ''}
+                </label>
+                <select
+                  id="fac-dept"
+                  className="input-field"
+                  required={isFieldRequired('department')}
+                  value={formData.department}
+                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                >
+                  {departmentsList.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {isFieldEnabled('designation') && (
+              <div>
+                <label className="input-label" htmlFor="fac-desig">
+                  Designation{isFieldRequired('designation') ? ' *' : ''}
+                </label>
+                <input
+                  id="fac-desig"
+                  type="text"
+                  required={isFieldRequired('designation')}
+                  className="input-field"
+                  placeholder={currentTab === 'faculty' ? 'e.g. Professor & HOD' : 'e.g. Chief Maintenance Supervisor'}
+                  value={formData.designation}
+                  onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+                />
+              </div>
+            )}
+
+            {currentTab === 'faculty' && isFieldEnabled('branch') && (
+              <div>
+                <label className="input-label" htmlFor="fac-branch">
+                  Branch / Specialization{isFieldRequired('branch') ? ' *' : ''}
+                </label>
                 <input
                   id="fac-branch"
                   type="text"
+                  required={isFieldRequired('branch')}
                   className="input-field"
                   placeholder="e.g. CSE, AI & Data Science"
                   value={formData.branch}
@@ -879,12 +976,15 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               </div>
             )}
 
-            {currentTab === 'staff' && (
+            {currentTab === 'staff' && isFieldEnabled('officeLocation') && (
               <div>
-                <label className="input-label" htmlFor="fac-office">Office / Service Location</label>
+                <label className="input-label" htmlFor="fac-office">
+                  Office / Service Location{isFieldRequired('officeLocation') ? ' *' : ''}
+                </label>
                 <input
                   id="fac-office"
                   type="text"
+                  required={isFieldRequired('officeLocation')}
                   className="input-field"
                   placeholder="e.g. Workshop Block - Room 102"
                   value={formData.officeLocation}
@@ -893,18 +993,35 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               </div>
             )}
 
-            <div>
-              <label className="input-label" htmlFor="fac-phone">Contact Phone</label>
-              <input
-                id="fac-phone"
-                type="tel"
-                className="input-field"
-                placeholder="+91 98765 00000"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-            </div>
+            {isFieldEnabled('phone') && (
+              <div>
+                <label className="input-label" htmlFor="fac-phone">
+                  Contact Phone{isFieldRequired('phone') ? ' *' : ''}
+                </label>
+                <input
+                  id="fac-phone"
+                  type="tel"
+                  required={isFieldRequired('phone')}
+                  className="input-field"
+                  placeholder="+91 98765 00000"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+            )}
           </div>
+
+          {/* Custom Details Section */}
+          <CustomFieldsRenderer
+            fields={formConfig.fields}
+            values={formData.customFields || {}}
+            errors={customFieldErrors}
+            onChange={handleCustomFieldChange}
+            targetUser={null}
+            onOpenAddField={() => setIsAddCustomFieldModalOpen(true)}
+            onOpenConfigureFields={() => setIsFieldConfigModalOpen(true)}
+            canManage={role === 'MAIN_ADMIN'}
+          />
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
             <Button variant="ghost" type="button" onClick={() => setIsAddModalOpen(false)}>
@@ -958,50 +1075,66 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               />
             </div>
 
-            <div>
-              <label className="input-label" htmlFor="edit-fac-empid">Employee / Staff ID *</label>
-              <input
-                id="edit-fac-empid"
-                type="text"
-                required
-                className="input-field"
-                value={formData.employeeId}
-                onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-              />
-            </div>
-
-            <div>
-              <label className="input-label" htmlFor="edit-fac-dept">Department *</label>
-              <select
-                id="edit-fac-dept"
-                className="input-field"
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-              >
-                {departmentsList.map((d) => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="input-label" htmlFor="edit-fac-desig">Designation *</label>
-              <input
-                id="edit-fac-desig"
-                type="text"
-                required
-                className="input-field"
-                value={formData.designation}
-                onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-              />
-            </div>
-
-            {currentTab === 'faculty' && (
+            {isFieldEnabled('employeeId') && (
               <div>
-                <label className="input-label" htmlFor="edit-fac-branch">Branch / Specialization</label>
+                <label className="input-label" htmlFor="edit-fac-empid">
+                  Employee / Staff ID{isFieldRequired('employeeId') ? ' *' : ''}
+                </label>
+                <input
+                  id="edit-fac-empid"
+                  type="text"
+                  required={isFieldRequired('employeeId')}
+                  className="input-field"
+                  value={formData.employeeId}
+                  onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+                />
+              </div>
+            )}
+
+            {isFieldEnabled('department') && (
+              <div>
+                <label className="input-label" htmlFor="edit-fac-dept">
+                  Department{isFieldRequired('department') ? ' *' : ''}
+                </label>
+                <select
+                  id="edit-fac-dept"
+                  className="input-field"
+                  required={isFieldRequired('department')}
+                  value={formData.department}
+                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                >
+                  {departmentsList.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {isFieldEnabled('designation') && (
+              <div>
+                <label className="input-label" htmlFor="edit-fac-desig">
+                  Designation{isFieldRequired('designation') ? ' *' : ''}
+                </label>
+                <input
+                  id="edit-fac-desig"
+                  type="text"
+                  required={isFieldRequired('designation')}
+                  className="input-field"
+                  value={formData.designation}
+                  onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+                />
+              </div>
+            )}
+
+            {currentTab === 'faculty' && isFieldEnabled('branch') && (
+              <div>
+                <label className="input-label" htmlFor="edit-fac-branch">
+                  Branch / Specialization{isFieldRequired('branch') ? ' *' : ''}
+                </label>
                 <input
                   id="edit-fac-branch"
                   type="text"
+                  required={isFieldRequired('branch')}
                   className="input-field"
                   value={formData.branch}
                   onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
@@ -1009,12 +1142,15 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               </div>
             )}
 
-            {currentTab === 'staff' && (
+            {currentTab === 'staff' && isFieldEnabled('officeLocation') && (
               <div>
-                <label className="input-label" htmlFor="edit-fac-office">Office Location</label>
+                <label className="input-label" htmlFor="edit-fac-office">
+                  Office Location{isFieldRequired('officeLocation') ? ' *' : ''}
+                </label>
                 <input
                   id="edit-fac-office"
                   type="text"
+                  required={isFieldRequired('officeLocation')}
                   className="input-field"
                   value={formData.officeLocation}
                   onChange={(e) => setFormData({ ...formData, officeLocation: e.target.value })}
@@ -1022,17 +1158,34 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               </div>
             )}
 
-            <div>
-              <label className="input-label" htmlFor="edit-fac-phone">Contact Phone</label>
-              <input
-                id="edit-fac-phone"
-                type="tel"
-                className="input-field"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-            </div>
+            {isFieldEnabled('phone') && (
+              <div>
+                <label className="input-label" htmlFor="edit-fac-phone">
+                  Contact Phone{isFieldRequired('phone') ? ' *' : ''}
+                </label>
+                <input
+                  id="edit-fac-phone"
+                  type="tel"
+                  required={isFieldRequired('phone')}
+                  className="input-field"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+            )}
           </div>
+
+          {/* Custom Details Section */}
+          <CustomFieldsRenderer
+            fields={formConfig.fields}
+            values={formData.customFields || {}}
+            errors={customFieldErrors}
+            onChange={handleCustomFieldChange}
+            targetUser={selectedUser}
+            onOpenAddField={() => setIsAddCustomFieldModalOpen(true)}
+            onOpenConfigureFields={() => setIsFieldConfigModalOpen(true)}
+            canManage={role === 'MAIN_ADMIN'}
+          />
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
             <Button variant="ghost" type="button" onClick={() => setIsEditModalOpen(false)}>
@@ -1127,6 +1280,25 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
               </div>
             </div>
 
+            {selectedUser.customFields && Object.keys(selectedUser.customFields).length > 0 && (
+              <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem' }}>Additional / Custom Information</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
+                  {Object.entries(selectedUser.customFields).map(([key, val]) => {
+                    const fieldDef = formConfig.fields.find((f) => f.id === key);
+                    const label = fieldDef?.label || key;
+                    const displayVal = val === true ? 'Yes' : val === false ? 'No' : String(val || '—');
+                    return (
+                      <div key={key}>
+                        <span style={{ color: 'var(--color-text-muted)', display: 'block' }}>{label}</span>
+                        <strong>{displayVal}</strong>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
               <Button variant="outline" onClick={() => setIsViewModalOpen(false)}>
                 Close
@@ -1206,6 +1378,44 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
           </div>
         </div>
       </Modal>
+
+      {/* Form Field Configuration Modal */}
+      <FormFieldConfigModal
+        isOpen={isFieldConfigModalOpen}
+        onClose={() => setIsFieldConfigModalOpen(false)}
+        formType="FACULTY"
+        config={formConfig}
+        onConfigUpdated={(newCfg) => setFormConfig(newCfg)}
+        onOpenAddCustomField={() => setIsAddCustomFieldModalOpen(true)}
+        actor={{
+          uid: userProfile?.uid || 'admin',
+          name: userProfile?.name || 'Administrator',
+          role: role || 'MAIN_ADMIN',
+        }}
+      />
+
+      {/* Add Custom Field Modal */}
+      <AddCustomFieldModal
+        isOpen={isAddCustomFieldModalOpen}
+        onClose={() => setIsAddCustomFieldModalOpen(false)}
+        formType="FACULTY"
+        availableUsers={usersList}
+        onSave={async (fieldDef) => {
+          const res = await formConfigService.addCustomField('FACULTY', fieldDef, {
+            uid: userProfile?.uid || 'admin',
+            name: userProfile?.name || 'Administrator',
+            role: role || 'MAIN_ADMIN',
+          });
+          if (res.success && res.config) {
+            setFormConfig(res.config);
+            setToastMessage(`Custom field "${fieldDef.label}" added successfully.`);
+            setTimeout(() => setToastMessage(null), 4000);
+            return true;
+          }
+          alert(res.error || 'Failed to add custom field.');
+          return false;
+        }}
+      />
     </div>
   );
 };

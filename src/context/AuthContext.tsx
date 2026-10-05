@@ -97,6 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCurrentUser(null);
     setUserProfile(null);
     try {
+      sessionStorage.setItem('campus_life_logged_out', 'true');
       sessionStorage.removeItem('campus_life_session');
     } catch {
       // ignore
@@ -118,9 +119,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const completePasswordSetup = async (password: string, email: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    const result = await authService.completePasswordSetup(email, password, currentUser);
+    const activeAuthUser = currentUser || (isFirebaseConfigured && auth ? auth.currentUser : null);
+    const result = await authService.completePasswordSetup(email, password, activeAuthUser);
     if (result.success && result.user) {
       setUserProfile(result.user);
+      if (activeAuthUser) {
+        setCurrentUser(activeAuthUser);
+      }
       try {
         sessionStorage.setItem('campus_life_session', JSON.stringify(result.user));
       } catch {

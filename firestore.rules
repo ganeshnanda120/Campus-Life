@@ -12,46 +12,70 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function hasUserData() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     // Retrieve user document to inspect application role and permissions
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    function getUserRole() {
+      return hasUserData() ? getUserData().get('role', '') : '';
+    }
+
     function isMainAdmin() {
-      return isAuthenticated() && getUserData().role == 'MAIN_ADMIN';
+      return getUserRole() == 'MAIN_ADMIN';
     }
 
     function isSubAdmin() {
-      return isAuthenticated() && getUserData().role == 'SUB_ADMIN';
+      return getUserRole() == 'SUB_ADMIN';
+    }
+
+    function isFaculty() {
+      return getUserRole() == 'FACULTY';
+    }
+
+    function isStaff() {
+      return getUserRole() == 'STAFF';
     }
 
     function hasPermission(perm) {
-      return isMainAdmin() || (isSubAdmin() && perm in getUserData().permissions);
+      return isMainAdmin() || (isSubAdmin() && perm in getUserData().get('permissions', []));
     }
 
     // --------------------------------------------------------------------------
     // Users Collection (Administrator-Controlled Authorization Layer)
     // --------------------------------------------------------------------------
     match /users/{userId} {
-      // Users can read their own profile; authorized administrators can read user records
+      // Users can read their own profile; users whose authenticated email matches the record can read their pre-registered profile; authorized administrators can read user records
       allow read: if isOwner(userId) ||
+        (isAuthenticated() && request.auth.token.email != null && resource.data.email == request.auth.token.email) ||
         isMainAdmin() ||
         hasPermission('MANAGE_STUDENTS') ||
         hasPermission('MANAGE_SUB_ADMINS') ||
         hasPermission('MANAGE_FACULTY') ||
         hasPermission('MANAGE_STAFF');
 
-      // Only administrators can create new users (NO SELF-REGISTRATION)
+      // Administrators can create pre-registered users.
+      // An authenticated user activating their account can create their own profile at /users/{auth.uid}
+      // matching their authenticated email, but cannot assign themselves an admin role.
       allow create: if isMainAdmin() ||
         hasPermission('MANAGE_STUDENTS') ||
         hasPermission('MANAGE_SUB_ADMINS') ||
         hasPermission('MANAGE_FACULTY') ||
-        hasPermission('MANAGE_STAFF');
+        hasPermission('MANAGE_STAFF') ||
+        (isOwner(userId) &&
+          request.auth.token.email != null &&
+          request.resource.data.email == request.auth.token.email &&
+          request.resource.data.role != 'MAIN_ADMIN' &&
+          request.resource.data.role != 'SUB_ADMIN'
+        );
 
       // Update constraints:
       // Admins have update rights according to their specific permissions.
-      // Normal users may only complete initial activation (setting isActivated: true)
-      // or update personal contact info (phone, photoUrl).
+      // Normal users may complete initial activation or update personal contact info (phone, photoUrl).
       // They CANNOT alter role, permissions, isActive, studentId, rollNumber, or employeeId.
       allow update: if isMainAdmin() ||
         (hasPermission('MANAGE_STUDENTS') && resource.data.role == 'STUDENT') ||
@@ -62,10 +86,22 @@ service cloud.firestore {
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             'role', 'permissions', 'isActive', 'studentId', 'rollNumber', 'employeeId', 'department', 'branch', 'year'
           ])
+        ) ||
+        (isAuthenticated() &&
+          request.auth.token.email != null &&
+          resource.data.email == request.auth.token.email &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'role', 'permissions', 'isActive', 'studentId', 'rollNumber', 'employeeId', 'department', 'branch', 'year'
+          ])
         );
 
-      // Only MAIN_ADMIN can deactivate/delete records
-      allow delete: if isMainAdmin();
+      // Only MAIN_ADMIN can deactivate/delete records, or an authenticated user cleaning up their own unactivated legacy pre-registration doc
+      allow delete: if isMainAdmin() ||
+        (isAuthenticated() &&
+          request.auth.token.email != null &&
+          resource.data.email == request.auth.token.email &&
+          resource.data.isActivated == false
+        );
     }
 
     // --------------------------------------------------------------------------
@@ -96,15 +132,15 @@ service cloud.firestore {
       allow read: if isOwner(resource.data.studentId) ||
         isMainAdmin() ||
         hasPermission('MANAGE_GATE_PASS') ||
-        (isAuthenticated() && getUserData().role == 'STAFF');
+        (isAuthenticated() && isStaff());
       allow create: if isAuthenticated() && request.resource.data.studentId == request.auth.uid;
       allow update: if isMainAdmin() || hasPermission('MANAGE_GATE_PASS');
       allow delete: if isMainAdmin();
     }
 
     match /visitorLogs/{logId} {
-      allow read: if isMainAdmin() || hasPermission('MANAGE_GATE_PASS') || (isAuthenticated() && getUserData().role == 'STAFF');
-      allow create: if isMainAdmin() || hasPermission('MANAGE_GATE_PASS') || (isAuthenticated() && getUserData().role == 'STAFF');
+      allow read: if isMainAdmin() || hasPermission('MANAGE_GATE_PASS') || (isAuthenticated() && isStaff());
+      allow create: if isMainAdmin() || hasPermission('MANAGE_GATE_PASS') || (isAuthenticated() && isStaff());
       allow update, delete: if isMainAdmin();
     }
 
@@ -140,8 +176,8 @@ service cloud.firestore {
     }
 
     match /mealRecords/{mealId} {
-      allow read: if isOwner(resource.data.studentId) || isMainAdmin() || hasPermission('MANAGE_MESS') || (isAuthenticated() && getUserData().role == 'STAFF');
-      allow write: if isMainAdmin() || hasPermission('MANAGE_MESS') || (isAuthenticated() && getUserData().role == 'STAFF');
+      allow read: if isOwner(resource.data.studentId) || isMainAdmin() || hasPermission('MANAGE_MESS') || (isAuthenticated() && isStaff());
+      allow write: if isMainAdmin() || hasPermission('MANAGE_MESS') || (isAuthenticated() && isStaff());
     }
 
     // --------------------------------------------------------------------------
@@ -223,10 +259,10 @@ service cloud.firestore {
         (isOwner(resource.data.studentId) ||
          isMainAdmin() ||
          hasPermission('MANAGE_ATTENDANCE') ||
-         getUserData().role == 'FACULTY');
+         isFaculty());
       allow create, update: if isMainAdmin() ||
         hasPermission('MANAGE_ATTENDANCE') ||
-        (isAuthenticated() && getUserData().role == 'FACULTY');
+        (isAuthenticated() && isFaculty());
       allow delete: if isMainAdmin();
     }
 
@@ -237,7 +273,7 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isMainAdmin() ||
         hasPermission('MANAGE_TIMETABLE') ||
-        (isAuthenticated() && getUserData().role == 'FACULTY');
+        (isAuthenticated() && isFaculty());
     }
 
     // --------------------------------------------------------------------------
@@ -271,6 +307,26 @@ service cloud.firestore {
       allow read: if isMainAdmin() || hasPermission('VIEW_AUDIT_LOGS');
       allow create: if isAuthenticated();
       allow update, delete: if false; // Audit logs are strictly append-only and immutable
+    }
+
+    // --------------------------------------------------------------------------
+    // Academic Degrees & Programs Configuration
+    // --------------------------------------------------------------------------
+    match /academic_degrees/{degreeId} {
+      allow read: if isAuthenticated();
+      allow write: if isMainAdmin() || hasPermission('MANAGE_STUDENTS');
+    }
+
+    // --------------------------------------------------------------------------
+    // Form Field Configurations
+    // --------------------------------------------------------------------------
+    match /formConfigurations/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isMainAdmin() ||
+        hasPermission('MANAGE_STUDENTS') ||
+        hasPermission('MANAGE_FACULTY') ||
+        hasPermission('MANAGE_SUB_ADMINS') ||
+        hasPermission('MANAGE_SETTINGS');
     }
   }
 }

@@ -123,7 +123,7 @@ export const AnalyticsReportsPage: React.FC = () => {
       </div>
 
       {/* Top Level KPI Cards */}
-      <div className="grid-cards">
+      <div className="grid-cards-4">
         <StatCard
           label="Avg Resolution Time"
           value={resolutionStats?.averageDays !== null && resolutionStats?.averageDays !== undefined ? `${resolutionStats.averageDays} Days` : 'No sufficient data'}

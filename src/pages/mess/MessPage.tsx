@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Utensils,
   MessageSquare,
@@ -35,7 +34,6 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 
 export const MessPage: React.FC = () => {
   const { userProfile, role, permissions } = useAuth();
-  const navigate = useNavigate();
 
   const isDayScholar = userProfile?.studentCategory === 'DAY_SCHOLAR';
   const isAdminOrStaff =
@@ -188,36 +186,6 @@ export const MessPage: React.FC = () => {
     }
   };
 
-  // If student is DAY_SCHOLAR, show clear restriction message
-  if (role === 'STUDENT' && isDayScholar) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '840px', margin: '0 auto', width: '100%' }}>
-        <div>
-          <h1 style={{ marginBottom: '0.25rem' }}>Campus Mess & Dining</h1>
-          <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-            Daily menus, residential meal planning, and catering operations.
-          </p>
-        </div>
-
-        <Card>
-          <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
-            <Utensils size={48} style={{ color: 'var(--color-text-muted)', margin: '0 auto 1rem auto' }} />
-            <h3 style={{ margin: '0 0 0.5rem 0' }}>Day Scholar Account</h3>
-            <p style={{ maxWidth: '520px', margin: '0 auto 1.5rem auto', color: 'var(--color-text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>
-              You are currently registered as a <strong>Day Scholar</strong>. Residential campus dining hall subscriptions and weekly meal schedules are provided for on-campus residents. Day scholars wishing to obtain guest meal coupons can visit the Central Accounts Office.
-            </p>
-            <Button
-              variant="primary"
-              onClick={() => navigate('/service-directory')}
-            >
-              Explore Campus Canteens & Cafeterias
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
   // Filter menu items for selected day
   const dayMenuItems = menu.filter((m) => m.dayOfWeek.toLowerCase() === selectedDay.toLowerCase());
 
@@ -226,6 +194,12 @@ export const MessPage: React.FC = () => {
       {toastMessage && (
         <Alert variant="success" title="Success" dismissible onDismiss={() => setToastMessage(null)}>
           {toastMessage}
+        </Alert>
+      )}
+
+      {isDayScholar && role === 'STUDENT' && (
+        <Alert variant="info" title="Day Scholar Account Notice">
+          You are currently registered as a <strong>Day Scholar</strong>. Residential campus dining hall subscriptions and weekly meal schedules are provided for on-campus residents. Day scholars wishing to obtain guest meal coupons can visit the Central Accounts Office.
         </Alert>
       )}
 
@@ -248,16 +222,14 @@ export const MessPage: React.FC = () => {
             Refresh
           </Button>
 
-          {!isDayScholar && (
-            <Button
-              variant="primary"
-              size="sm"
-              leftIcon={<MessageSquare size={15} />}
-              onClick={() => setIsFeedbackModalOpen(true)}
-            >
-              Submit Mess Feedback
-            </Button>
-          )}
+          <Button
+            variant="primary"
+            size="sm"
+            leftIcon={<MessageSquare size={15} />}
+            onClick={() => setIsFeedbackModalOpen(true)}
+          >
+            Submit Mess Feedback
+          </Button>
 
           {isAdminOrStaff && (
             <>
@@ -282,8 +254,8 @@ export const MessPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Operational Stats */}
-      <div className="grid-cards">
+      {/* Operational Stats (3 evenly distributed columns) */}
+      <div className="grid-cards-3">
         <StatCard
           label="Active Dining Facility"
           value="Dining Hall 1 & 2"
@@ -298,39 +270,42 @@ export const MessPage: React.FC = () => {
         />
         <StatCard
           label="My Meal Status Today"
-          value={myMeals.length > 0 ? `${myMeals.length} Meals Recorded` : 'No Check-ins'}
-          subtitle="Biometric coupon verified"
+          value={isDayScholar ? 'Day Scholar' : (myMeals.length > 0 ? `${myMeals.length} Meals Recorded` : 'No Check-ins')}
+          subtitle={isDayScholar ? 'Guest coupons at Accounts Office' : 'Biometric coupon verified'}
           icon={<CheckCircle2 size={22} style={{ color: 'var(--color-warning, #d97706)' }} />}
         />
       </div>
 
-      {/* Facility & Day Navigation */}
+      {/* Integrated Dining Schedule Container (Matches PDF Page 9) */}
       <Card>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {/* Facility Selector */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Dining Facility:</span>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {['Central Dining Hall 1 & 2', 'Aryabhatta Hall Dining', 'Kalam Hall Dining'].map((fac) => (
-                <button
-                  key={fac}
-                  type="button"
-                  onClick={() => setSelectedFacility(fac)}
-                  style={{
-                    padding: '0.35rem 0.75rem',
-                    borderRadius: 'var(--radius-full)',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    border: '1px solid var(--border-default)',
-                    backgroundColor: selectedFacility === fac ? 'var(--brand-primary)' : 'var(--bg-surface)',
-                    color: selectedFacility === fac ? '#ffffff' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  {fac}
-                </button>
-              ))}
+              {['Central Dining Hall 1 & 2', 'Aryabhatta Hall Dining', 'Kalam Hall Dining'].map((fac) => {
+                const isSelected = selectedFacility === fac;
+                return (
+                  <button
+                    key={fac}
+                    type="button"
+                    onClick={() => setSelectedFacility(fac)}
+                    style={{
+                      padding: '0.35rem 0.85rem',
+                      borderRadius: 'var(--radius-full)',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      border: isSelected ? '1px solid var(--brand-primary)' : '1px solid var(--border-default)',
+                      backgroundColor: isSelected ? 'var(--brand-primary)' : 'var(--bg-surface)',
+                      color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {fac}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -346,7 +321,7 @@ export const MessPage: React.FC = () => {
                   style={{
                     padding: '0.45rem 1rem',
                     borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-default)',
+                    border: isSelected ? '1px solid var(--brand-primary)' : '1px solid var(--border-default)',
                     backgroundColor: isSelected ? 'var(--brand-primary)' : 'var(--bg-subtle)',
                     color: isSelected ? '#ffffff' : 'var(--text-secondary)',
                     fontWeight: isSelected ? 600 : 500,
@@ -361,83 +336,106 @@ export const MessPage: React.FC = () => {
               );
             })}
           </div>
+
+          {/* 4 Meal Slots Grid inside single container */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '1.25rem',
+            paddingTop: '1rem',
+            borderTop: '1px solid var(--border-subtle)',
+          }}>
+            {(['BREAKFAST', 'LUNCH', 'SNACKS', 'DINNER'] as MealType[]).map((mealType) => {
+              const item = dayMenuItems.find((m) => m.mealType === mealType);
+              const timingInfo = MEAL_TIMINGS[mealType];
+
+              return (
+                <div
+                  key={mealType}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    padding: '1.2rem',
+                    borderRadius: 'var(--radius-lg)',
+                    backgroundColor: 'var(--bg-subtle)',
+                    border: '1px solid var(--border-default)',
+                    minHeight: '140px',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem', gap: '0.5rem' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {timingInfo.label}
+                        </h4>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', display: 'block', marginTop: '0.2rem' }}>
+                          {timingInfo.timing}
+                        </span>
+                      </div>
+                      {item?.specialItem && (
+                        <Badge variant="warning">
+                          <Sparkles size={11} /> {item.specialItem}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {isLoading ? (
+                      <Skeleton height="50px" />
+                    ) : item ? (
+                      <p style={{ margin: 0, fontSize: '0.875rem', lineHeight: 1.6, color: 'var(--text-primary)' }}>
+                        {item.menu}
+                      </p>
+                    ) : (
+                      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+                        Standard institutional diet menu prepared by mess committee.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </Card>
 
-      {/* Menu Cards (Breakfast, Lunch, Snacks, Dinner) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
-        {(['BREAKFAST', 'LUNCH', 'SNACKS', 'DINNER'] as MealType[]).map((mealType) => {
-          const item = dayMenuItems.find((m) => m.mealType === mealType);
-          const timingInfo = MEAL_TIMINGS[mealType];
-
-          return (
-            <Card key={mealType}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--brand-primary)' }}>
-                    {timingInfo.label}
-                  </h3>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                    {timingInfo.timing}
-                  </span>
-                </div>
-                {item?.specialItem && (
-                  <Badge variant="warning">
-                    <Sparkles size={11} /> {item.specialItem}
-                  </Badge>
-                )}
-              </div>
-
-              {isLoading ? (
-                <Skeleton height="70px" />
-              ) : item ? (
-                <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--text-primary)' }}>
-                  {item.menu}
-                </p>
-              ) : (
-                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
-                  Standard institutional diet menu prepared by mess committee.
-                </p>
-              )}
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Mess Announcements (Section 31) */}
+      {/* Mess Announcements (Section 31 - Matches PDF Page 9) */}
       <Card>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
           <Bell size={18} style={{ color: 'var(--brand-primary)' }} />
-          <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Catering Notices & Dining Announcements</h3>
+          <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>Catering Notices & Dining Announcements</h3>
         </div>
 
         {announcements.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--color-text-muted)' }}>
-            No current mess announcements.
+          <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--color-text-muted)' }}>
+            No mess announcements.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {announcements.map((ann) => (
               <div
                 key={ann.id}
                 style={{
-                  padding: '1rem',
-                  borderRadius: 'var(--radius-md)',
+                  padding: '1.2rem',
+                  borderRadius: 'var(--radius-lg)',
                   backgroundColor: 'var(--bg-subtle)',
                   borderLeft: '4px solid var(--brand-primary)',
+                  border: '1px solid var(--border-default)',
+                  borderLeftWidth: '4px',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.35rem' }}>
-                  <h4 style={{ margin: 0, fontSize: '0.95rem' }}>{ann.title}</h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>{ann.title}</h4>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{ann.date}</span>
                     <Badge variant="info">{ann.type.replace('_', ' ')}</Badge>
                   </div>
                 </div>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                   {ann.message}
                 </p>
-                <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                <div style={{ marginTop: '0.65rem', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
                   Posted by: {ann.postedBy} • {ann.facility}
                 </div>
               </div>

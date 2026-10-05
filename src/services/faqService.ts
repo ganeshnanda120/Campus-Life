@@ -22,7 +22,7 @@ const INITIAL_FAQS: CampusFAQ[] = [
     question: 'How do I request an official Bonafide or Study Certificate?',
     answer: 'Navigate to "Requests & Certificates" from the main sidebar. Click "+ New Request", choose the required certificate type (Bonafide, Study, Character, etc.), specify the institutional purpose (e.g. passport application, state scholarship verification), upload any supporting documents if required, and submit. The academic section will verify and issue the digitally signed document.',
     tags: ['certificate', 'bonafide', 'scholarship', 'study'],
-    helpfulCount: 342,
+    helpfulCount: 0,
   },
   {
     id: 'faq_002',
@@ -30,7 +30,7 @@ const INITIAL_FAQS: CampusFAQ[] = [
     question: 'What is the procedure for obtaining an overnight hostel gate pass?',
     answer: 'Hostel residents must navigate to the "Gate Pass" module at least 6 hours prior to planned departure. Enter your destination, leave date/time, expected return date/time, and parent/guardian contact consent. Upon warden review and digital approval, a cryptographic QR-coded digital gate pass is generated. Present this QR pass to security guards at Gate 1 or Gate 2 upon egress and re-entry.',
     tags: ['gate pass', 'hostel', 'leave', 'security', 'qr code'],
-    helpfulCount: 520,
+    helpfulCount: 0,
   },
   {
     id: 'faq_003',
@@ -38,7 +38,7 @@ const INITIAL_FAQS: CampusFAQ[] = [
     question: 'What happens if my attendance in a course falls below 75%?',
     answer: 'In strict adherence with BPUT academic regulations, maintaining a minimum of 75% attendance in theory lectures and laboratory sessions is mandatory to appear for the end-semester examinations. If your percentage falls between 65% and 74%, a formal condonation request accompanied by certified medical documentation must be submitted via the Requests module for senate approval.',
     tags: ['attendance', 'bput', 'shortage', 'exams', 'medical'],
-    helpfulCount: 418,
+    helpfulCount: 0,
   },
   {
     id: 'faq_004',
@@ -46,7 +46,7 @@ const INITIAL_FAQS: CampusFAQ[] = [
     question: 'How do I report electrical, plumbing, or internet issues in my hostel room?',
     answer: 'Go to "Complaints & SLA", click "Report Issue", select the relevant category (Hostel / Electrical / Plumbing / Wi-Fi), and provide your exact room and block location. A formal resolution timer (SLA) is attached immediately, and the ticket is dispatched to the campus estate technician. You can track status and provide completion feedback.',
     tags: ['complaint', 'maintenance', 'electrical', 'plumbing', 'sla'],
-    helpfulCount: 295,
+    helpfulCount: 0,
   },
   {
     id: 'faq_005',
@@ -54,7 +54,7 @@ const INITIAL_FAQS: CampusFAQ[] = [
     question: 'How does first-time student activation work without self-registration?',
     answer: 'Campus Life employs strict administrator-controlled enrollment. When the admissions department enters your university record, an official activation invitation is sent to your registered institutional email. Enter your email on the Activation screen, verify your email link, set your confidential password, and your account will be activated.',
     tags: ['login', 'activation', 'password', 'registration'],
-    helpfulCount: 610,
+    helpfulCount: 0,
   },
   {
     id: 'faq_006',
@@ -62,7 +62,7 @@ const INITIAL_FAQS: CampusFAQ[] = [
     question: 'Where can I see the daily hostel dining menu and submit meal feedback?',
     answer: 'Click "Hostel & Mess" in the navigation drawer. The daily breakfast, lunch, snacks, and dinner schedules are updated weekly by the mess committee. You can also vote in active dining polls and submit quality feedback directly to the chief warden.',
     tags: ['mess', 'dining', 'food', 'menu', 'hostel'],
-    helpfulCount: 180,
+    helpfulCount: 0,
   },
   {
     id: 'faq_007',
@@ -70,7 +70,7 @@ const INITIAL_FAQS: CampusFAQ[] = [
     question: 'How do I download my BPUT semester admit card and view exam schedules?',
     answer: 'Examination notices, timetables, and admit card release dates are announced under "Notices & Circulars" and the "Campus Calendar". Once published, you can verify your registration status and collect stamped hall tickets from the Examination Cell.',
     tags: ['exams', 'admit card', 'schedule', 'results', 'coe'],
-    helpfulCount: 388,
+    helpfulCount: 0,
   },
   {
     id: 'faq_008',
@@ -78,14 +78,23 @@ const INITIAL_FAQS: CampusFAQ[] = [
     question: 'Why do certain important notices require digital acknowledgement?',
     answer: 'Critical administrative notices (such as exam fee deadlines, safety emergencies, or code of conduct updates) have mandatory acknowledgement enabled by university leadership. Clicking "I have read and understood" records a tamper-proof timestamp confirming your awareness.',
     tags: ['notices', 'acknowledgement', 'circular', 'compliance'],
-    helpfulCount: 240,
+    helpfulCount: 0,
   },
 ];
 
 function getLocalFAQs(): CampusFAQ[] {
   try {
     const raw = safeStorage.getItem(FAQS_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        // Sanitize legacy fake hardcoded numbers
+        return parsed.map((item) => ({
+          ...item,
+          helpfulCount: item.helpfulCount && item.helpfulCount > 50 ? 0 : item.helpfulCount || 0,
+        }));
+      }
+    }
   } catch {
     // ignore
   }

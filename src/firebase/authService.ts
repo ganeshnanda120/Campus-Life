@@ -6,6 +6,8 @@ import {
   signOut,
   updatePassword,
   reload,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
   type User as FirebaseUser
 } from 'firebase/auth';
 import {
@@ -13,8 +15,10 @@ import {
   query,
   where,
   getDocs,
-  doc,
-  updateDoc
+  getDoc,
+  setDoc,
+  deleteDoc,
+  doc
 } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from './config';
 import type { UserRecord, UserPermission } from '../types';
@@ -141,6 +145,12 @@ export function mapFirebaseAuthError(codeOrMessage: string): string {
   if (codeOrMessage.includes('auth/email-already-in-use')) {
     return 'This email address is already initialized in authentication records.';
   }
+  if (codeOrMessage.includes('auth/requires-recent-login')) {
+    return 'Your activation session timed out. Please retry or click Start Activation again.';
+  }
+  if (codeOrMessage.includes('permission-denied') || codeOrMessage.includes('Missing or insufficient permissions')) {
+    return 'Permission denied by authorization policy. Please verify your activation link or contact your system administrator.';
+  }
 
   return codeOrMessage;
 }
@@ -149,13 +159,24 @@ export interface EmailCheckResult {
   authorized: boolean;
   active: boolean;
   activated: boolean;
+  emailVerified?: boolean;
   user?: UserRecord;
   message?: string;
+}
+
+// Deterministic temporary password for pre-activation email verification
+export function getActivationTempPassword(email: string): string {
+  const b64 = typeof btoa !== 'undefined'
+    ? btoa(email.toLowerCase()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 10)
+    : 'CampusPass';
+  return `Init_${b64}_Pass1!`;
 }
 
 export const authService = {
   async checkEmailAuthorization(email: string): Promise<EmailCheckResult> {
     const cleanEmail = email.trim().toLowerCase();
+
+    const isLocallyVerified = safeStorage.getItem(`campus_life_verification_${cleanEmail}`) === 'VERIFIED';
 
     if (isFirebaseConfigured && db) {
       try {
@@ -165,10 +186,12 @@ export const authService = {
 
         if (!snapshot.empty) {
           const docData = snapshot.docs[0].data() as UserRecord;
+          const isVerified = Boolean(docData.emailVerified || isLocallyVerified);
           return {
             authorized: true,
             active: Boolean(docData.isActive),
             activated: Boolean(docData.isActivated),
+            emailVerified: isVerified,
             user: docData,
           };
         }
@@ -185,14 +208,18 @@ export const authService = {
         authorized: false,
         active: false,
         activated: false,
+        emailVerified: false,
         message: 'Your email address has not been registered by the administrator. Please contact your administrator.',
       };
     }
+
+    const isVerified = Boolean(user.emailVerified || isLocallyVerified);
 
     return {
       authorized: true,
       active: Boolean(user.isActive),
       activated: Boolean(user.isActivated),
+      emailVerified: isVerified,
       user,
     };
   },
@@ -202,13 +229,18 @@ export const authService = {
 
     if (isFirebaseConfigured && auth) {
       try {
-        const tempInitPassword = `Init_${Date.now()}_Tmp!`;
+        const tempInitPassword = getActivationTempPassword(cleanEmail);
         try {
           const cred = await createUserWithEmailAndPassword(auth, cleanEmail, tempInitPassword);
           await sendEmailVerification(cred.user);
         } catch {
-          if (auth.currentUser) {
-            await sendEmailVerification(auth.currentUser);
+          try {
+            const signedIn = await signInWithEmailAndPassword(auth, cleanEmail, tempInitPassword);
+            await sendEmailVerification(signedIn.user);
+          } catch {
+            if (auth.currentUser) {
+              await sendEmailVerification(auth.currentUser);
+            }
           }
         }
         return { success: true };
@@ -227,20 +259,47 @@ export const authService = {
   },
 
   async checkEmailVerified(user?: FirebaseUser | null, email?: string): Promise<boolean> {
-    if (isFirebaseConfigured && user) {
-      try {
-        await reload(user);
-        return user.emailVerified;
-      } catch {
-        return false;
+    const cleanEmail = email ? email.trim().toLowerCase() : undefined;
+
+    if (cleanEmail && safeStorage.getItem(`campus_life_verification_${cleanEmail}`) === 'VERIFIED') {
+      return true;
+    }
+
+    if (isFirebaseConfigured && auth) {
+      let targetUser = user || auth.currentUser;
+
+      if (!targetUser || (cleanEmail && targetUser.email?.toLowerCase() !== cleanEmail)) {
+        if (cleanEmail) {
+          try {
+            const tempPass = getActivationTempPassword(cleanEmail);
+            const cred = await signInWithEmailAndPassword(auth, cleanEmail, tempPass);
+            targetUser = cred.user;
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      if (targetUser) {
+        try {
+          await reload(targetUser);
+          if (targetUser.emailVerified) {
+            if (cleanEmail) {
+              safeStorage.setItem(`campus_life_verification_${cleanEmail}`, 'VERIFIED');
+            }
+            return true;
+          }
+        } catch {
+          // ignore
+        }
       }
     }
 
-    if (email) {
-      const state = safeStorage.getItem(`campus_life_verification_${email.toLowerCase()}`);
-      return state === 'VERIFIED' || state === 'SENT';
+    if (cleanEmail) {
+      const state = safeStorage.getItem(`campus_life_verification_${cleanEmail}`);
+      return state === 'VERIFIED';
     }
-    return true;
+    return false;
   },
 
   async completePasswordSetup(
@@ -249,37 +308,113 @@ export const authService = {
     currentUser?: FirebaseUser | null
   ): Promise<{ success: boolean; user?: UserRecord; error?: string }> {
     const cleanEmail = email.trim().toLowerCase();
+    let activeUser = currentUser || (isFirebaseConfigured && auth ? auth.currentUser : null);
 
-    if (isFirebaseConfigured && auth && currentUser) {
+    let activatedRecord: UserRecord | null = null;
+
+    if (isFirebaseConfigured && auth) {
+      const tempPass = getActivationTempPassword(cleanEmail);
+
+      // Re-authenticate or sign in with temporary activation password to get a fresh auth session (prevents auth/requires-recent-login)
       try {
-        await updatePassword(currentUser, password);
+        const signedIn = await signInWithEmailAndPassword(auth, cleanEmail, tempPass);
+        activeUser = signedIn.user;
+      } catch {
+        // If signIn with tempPass fails, activeUser might already be signed in
+      }
+
+      if (activeUser) {
+        try {
+          try {
+            await updatePassword(activeUser, password);
+          } catch (passErr: any) {
+            if (passErr.code === 'auth/requires-recent-login') {
+              const credential = EmailAuthProvider.credential(cleanEmail, tempPass);
+              await reauthenticateWithCredential(activeUser, credential);
+              await updatePassword(activeUser, password);
+            } else {
+              throw passErr;
+            }
+          }
 
         if (db) {
-          const userDocRef = doc(db, 'users', currentUser.uid);
-          await updateDoc(userDocRef, {
+          const userDocRef = doc(db, 'users', activeUser.uid);
+          let baseRecord: UserRecord | null = null;
+          let oldDocId: string | null = null;
+
+          try {
+            const userDocSnap = await getDoc(userDocRef);
+            if (userDocSnap.exists()) {
+              baseRecord = userDocSnap.data() as UserRecord;
+            }
+          } catch (e) {
+            console.warn('Could not fetch userDoc by UID:', e);
+          }
+
+          if (!baseRecord) {
+            try {
+              const usersRef = collection(db, 'users');
+              const q = query(usersRef, where('email', '==', cleanEmail));
+              const qSnap = await getDocs(q);
+              if (!qSnap.empty) {
+                baseRecord = qSnap.docs[0].data() as UserRecord;
+                oldDocId = qSnap.docs[0].id;
+              }
+            } catch (e) {
+              console.warn('Could not query users by email:', e);
+            }
+          }
+
+          if (!baseRecord) {
+            const localUsers = getLocalUsers();
+            baseRecord = localUsers.find((u) => u.email.toLowerCase() === cleanEmail) || null;
+          }
+
+          const activatedData: UserRecord = {
+            role: 'STUDENT',
+            name: cleanEmail.split('@')[0],
+            ...baseRecord,
+            uid: activeUser.uid,
+            email: cleanEmail,
             isActivated: true,
+            isActive: true,
             emailVerified: true,
+            createdAt: baseRecord?.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-          });
+          };
+
+          activatedRecord = activatedData;
+          await setDoc(userDocRef, activatedData, { merge: true });
+
+          if (oldDocId && oldDocId !== activeUser.uid) {
+            try {
+              await deleteDoc(doc(db, 'users', oldDocId));
+            } catch {
+              // ignore legacy doc cleanup failure
+            }
+          }
         }
       } catch (err: any) {
+        console.error('Password setup error:', err);
         return { success: false, error: mapFirebaseAuthError(err.code || err.message) };
       }
     }
+  }
 
     const updated = updateLocalUser(cleanEmail, {
+      uid: activeUser?.uid,
       isActivated: true,
       emailVerified: true,
     });
 
     try {
       safeStorage.setItem(`campus_life_pwd_${cleanEmail}`, password);
-      safeStorage.removeItem(`campus_life_verification_${cleanEmail}`);
+      safeStorage.setItem(`campus_life_verification_${cleanEmail}`, 'VERIFIED');
     } catch {
       // ignore
     }
 
-    return { success: true, user: updated || undefined };
+    return { success: true, user: updated || activatedRecord || undefined };
   },
 
   async signInWithEmailPassword(

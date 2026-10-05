@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { GraduationCap, ArrowRight, ShieldAlert, Lock, Mail, CheckCircle2 } from 'lucide-react';
+import { GraduationCap, ArrowRight, ShieldAlert, Lock, Mail, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { Alert } from '../../components/common/Alert';
@@ -9,6 +9,7 @@ import { useAuth } from '../../context/useAuth';
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [step, setStep] = useState<'email' | 'password'>('email');
 
   // Modals & States
@@ -106,8 +107,17 @@ export const LoginPage: React.FC = () => {
     setLoadingText('');
 
     if (result.success) {
-      const from = (location.state as any)?.from?.pathname || '/dashboard';
-      navigate(from, { replace: true });
+      let wasLoggedOut = false;
+      try {
+        wasLoggedOut = sessionStorage.getItem('campus_life_logged_out') === 'true';
+        sessionStorage.removeItem('campus_life_logged_out');
+      } catch {
+        // ignore
+      }
+      const isFromLogout = wasLoggedOut || Boolean((location.state as any)?.isLogout);
+      const deepLink = !isFromLogout ? (location.state as any)?.from?.pathname : null;
+      const destination = deepLink && deepLink !== '/login' && deepLink !== '/' ? deepLink : '/dashboard';
+      navigate(destination, { replace: true });
     } else {
       setError(result.error || 'Authentication failed. Please verify your password.');
     }
@@ -300,7 +310,7 @@ export const LoginPage: React.FC = () => {
                 <div style={{ position: 'relative', marginTop: '0.35rem' }}>
                   <input
                     id="login-password"
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     className={`form-input ${error ? 'error' : ''}`}
                     placeholder="Enter your password"
                     value={password}
@@ -311,7 +321,7 @@ export const LoginPage: React.FC = () => {
                     required
                     autoFocus
                     disabled={isLoading}
-                    style={{ paddingLeft: '2.5rem' }}
+                    style={{ paddingLeft: '2.5rem', paddingRight: '2.5rem' }}
                   />
                   <Lock
                     size={18}
@@ -323,6 +333,28 @@ export const LoginPage: React.FC = () => {
                       color: 'var(--text-muted)',
                     }}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                    style={{
+                      position: 'absolute',
+                      right: '0.75rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      padding: '0.25rem',
+                      cursor: 'pointer',
+                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
                 {error && <span className="form-error">{error}</span>}
               </div>

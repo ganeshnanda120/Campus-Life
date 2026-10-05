@@ -8,7 +8,9 @@ import {
   ArrowRight,
   RefreshCw,
   ArrowLeft,
-  Check
+  Check,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { Button } from '../../components/common/Button';
 import { Alert } from '../../components/common/Alert';
@@ -28,12 +30,12 @@ export const ActivatePage: React.FC = () => {
   const queryEmail = searchParams.get('email');
 
   // Steps: 'email_input' -> 'email_verification' -> 'password_setup' -> 'activated'
-  const [step, setStep] = useState<'email_input' | 'email_verification' | 'password_setup' | 'activated'>(() =>
-    queryEmail ? 'email_verification' : 'email_input'
-  );
+  const [step, setStep] = useState<'email_input' | 'email_verification' | 'password_setup' | 'activated'>('email_input');
   const [email, setEmail] = useState(() => queryEmail || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Status flags
   const [isLoading, setIsLoading] = useState(false);
@@ -46,9 +48,11 @@ export const ActivatePage: React.FC = () => {
   const startVerificationFlow = useCallback(async (targetEmail: string) => {
     setError('');
     setIsLoading(true);
-    setLoadingText('Verifying authorization record...');
+    setLoadingText('Checking account authorization...');
 
-    const check = await checkEmailAuthorization(targetEmail);
+    const clean = targetEmail.trim().toLowerCase();
+    const check = await checkEmailAuthorization(clean);
+
     if (!check.authorized) {
       setIsLoading(false);
       setIsUnauthorizedModalOpen(true);
@@ -61,42 +65,96 @@ export const ActivatePage: React.FC = () => {
       return;
     }
 
-    // If already activated, redirect to standard login (Section 11)
+    // If already activated, redirect to standard login
     if (check.activated) {
       setIsLoading(false);
-      navigate('/login');
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    // Check if email was already verified previously
+    setLoadingText('Checking verification status...');
+    const isAlreadyVerified = Boolean(check.emailVerified) || (await checkEmailVerified(clean));
+
+    if (isAlreadyVerified) {
+      // Skip verification email and move directly to password setup!
+      setIsLoading(false);
+      setStep('password_setup');
       return;
     }
 
     setLoadingText('Sending verification email...');
-    await initiateFirstTimeActivation(targetEmail);
+    await initiateFirstTimeActivation(clean);
     setIsLoading(false);
     setStep('email_verification');
     setResendCooldown(30);
-  }, [checkEmailAuthorization, initiateFirstTimeActivation, navigate]);
+  }, [checkEmailAuthorization, checkEmailVerified, initiateFirstTimeActivation, navigate]);
 
   // Initial dispatch when email query parameter is present on load
   useEffect(() => {
     if (!queryEmail) return;
 
     let isMounted = true;
-    checkEmailAuthorization(queryEmail).then((check) => {
-      if (!isMounted) return;
-      if (!check.authorized) {
-        setIsUnauthorizedModalOpen(true);
-      } else if (!check.active) {
-        setError('Your account is currently inactive. Please contact your administrator.');
-      } else if (check.activated) {
-        navigate('/login');
-      } else {
-        initiateFirstTimeActivation(queryEmail);
+    const clean = queryEmail.trim().toLowerCase();
+    setEmail(clean);
+    setIsLoading(true);
+    setLoadingText('Checking account authorization...');
+
+    (async () => {
+      try {
+        const check = await checkEmailAuthorization(clean);
+        if (!isMounted) return;
+
+        if (!check.authorized) {
+          setIsLoading(false);
+          setIsUnauthorizedModalOpen(true);
+          setStep('email_input');
+          return;
+        }
+
+        if (!check.active) {
+          setIsLoading(false);
+          setError('Your account is currently inactive. Please contact your administrator.');
+          setStep('email_input');
+          return;
+        }
+
+        if (check.activated) {
+          setIsLoading(false);
+          navigate('/login', { replace: true });
+          return;
+        }
+
+        // Check if user already verified their email previously
+        setLoadingText('Checking verification status...');
+        const isAlreadyVerified = Boolean(check.emailVerified) || (await checkEmailVerified(clean));
+        if (!isMounted) return;
+
+        setIsLoading(false);
+        if (isAlreadyVerified) {
+          // Skip email verification! Go straight to password setup!
+          setStep('password_setup');
+        } else {
+          // Send verification email and show verification step
+          setIsLoading(true);
+          setLoadingText('Sending verification email...');
+          await initiateFirstTimeActivation(clean);
+          if (!isMounted) return;
+          setIsLoading(false);
+          setStep('email_verification');
+          setResendCooldown(30);
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        setIsLoading(false);
+        setError('Failed to verify account authorization.');
       }
-    });
+    })();
 
     return () => {
       isMounted = false;
     };
-  }, [queryEmail, checkEmailAuthorization, initiateFirstTimeActivation, navigate]);
+  }, [queryEmail, checkEmailAuthorization, checkEmailVerified, initiateFirstTimeActivation, navigate]);
 
   // Resend cooldown timer
   useEffect(() => {
@@ -161,11 +219,13 @@ export const ActivatePage: React.FC = () => {
     setLoadingText('Activating account credentials...');
     setError('');
 
-    const result = await completePasswordSetup(password, email.trim().toLowerCase());
+    const cleanEmail = email.trim().toLowerCase();
+    const result = await completePasswordSetup(password, cleanEmail);
     setIsLoading(false);
 
     if (result.success) {
-      setStep('activated');
+      // Directly log into dashboard!
+      navigate('/dashboard', { replace: true });
     } else {
       setError(result.error || 'Failed to complete password configuration.');
     }
@@ -372,7 +432,7 @@ export const ActivatePage: React.FC = () => {
                 <div style={{ position: 'relative' }}>
                   <input
                     id="setup-password"
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     className="form-input"
                     placeholder="e.g. Campus2026"
                     value={password}
@@ -380,7 +440,7 @@ export const ActivatePage: React.FC = () => {
                     required
                     autoFocus
                     disabled={isLoading}
-                    style={{ paddingLeft: '2.5rem' }}
+                    style={{ paddingLeft: '2.5rem', paddingRight: '2.5rem' }}
                   />
                   <Lock
                     size={18}
@@ -392,6 +452,28 @@ export const ActivatePage: React.FC = () => {
                       color: 'var(--text-muted)',
                     }}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                    style={{
+                      position: 'absolute',
+                      right: '0.75rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      padding: '0.25rem',
+                      cursor: 'pointer',
+                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
               </div>
 
@@ -402,14 +484,14 @@ export const ActivatePage: React.FC = () => {
                 <div style={{ position: 'relative' }}>
                   <input
                     id="setup-confirm-password"
-                    type="password"
+                    type={showConfirmPassword ? 'text' : 'password'}
                     className="form-input"
                     placeholder="Re-enter your password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
                     disabled={isLoading}
-                    style={{ paddingLeft: '2.5rem' }}
+                    style={{ paddingLeft: '2.5rem', paddingRight: '2.5rem' }}
                   />
                   <Lock
                     size={18}
@@ -421,6 +503,28 @@ export const ActivatePage: React.FC = () => {
                       color: 'var(--text-muted)',
                     }}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    style={{
+                      position: 'absolute',
+                      right: '0.75rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      padding: '0.25rem',
+                      cursor: 'pointer',
+                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
               </div>
 

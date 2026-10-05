@@ -64,6 +64,15 @@ export const AppRoutes: React.FC = () => {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/id-card" element={<DigitalIdCardPage />} />
 
+        {/* Direct Operation Routes */}
+        <Route path="/requests" element={<RequestsPage />} />
+        <Route path="/complaints" element={<ComplaintsPage />} />
+        <Route path="/gate-pass" element={<GatePassPage />} />
+        <Route path="/attendance" element={<AttendancePage />} />
+        <Route path="/timetable" element={<TimetablePage />} />
+        <Route path="/hostel" element={<HostelPage />} />
+        <Route path="/mess" element={<MessPage />} />
+
         {/* Administration Modules with Explicit Role-Guards (Section 18) */}
         <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
         <Route

@@ -223,7 +223,7 @@ export const NoticesPage: React.FC = () => {
       </div>
 
       {/* KPI Stats */}
-      <div className="grid-cards">
+      <div className="grid-cards-3">
         <StatCard
           label="Active Published Notices"
           value={totalPublished.toString()}

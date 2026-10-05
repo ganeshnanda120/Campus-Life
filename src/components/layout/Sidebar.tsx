@@ -99,8 +99,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onClick={onClose}
         aria-hidden="true"
       />
-      <aside className={`app-sidebar ${isOpen ? 'mobile-open' : ''}`}>
+      <aside className={`app-sidebar h-[calc(100vh-4rem)] flex-shrink-0 flex flex-col ${isOpen ? 'mobile-open' : ''}`}>
         <div
+          className="sidebar-mobile-header"
           style={{
             padding: '1rem 1.25rem',
             display: 'flex',
@@ -123,7 +124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        <nav style={{ padding: '0.75rem 0.5rem', flex: 1, overflowY: 'auto' }}>
+        <nav className="sidebar-nav flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300">
           {navGroups.map((group) => {
             const visibleItems = group.items.filter((item) => {
               if (!item.roles) return true;
@@ -133,10 +134,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             if (visibleItems.length === 0) return null;
 
             return (
-              <div key={group.title} style={{ marginBottom: '1.25rem' }}>
+              <div key={group.title} style={{ marginBottom: '1rem' }}>
                 <div
                   style={{
-                    padding: '0.35rem 0.75rem',
+                    padding: '0.25rem 0.75rem',
                     fontSize: '0.72rem',
                     fontWeight: 700,
                     textTransform: 'uppercase',
@@ -146,7 +147,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                   {group.title}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
                   {visibleItems.map((item) => (
                     <NavLink
                       key={item.to}
@@ -161,9 +162,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: '0.75rem',
-                        padding: '0.6rem 0.75rem',
+                        padding: '0.5rem 0.75rem',
                         borderRadius: 'var(--radius-md)',
-                        fontSize: '0.875rem',
+                        fontSize: '0.85rem',
                         fontWeight: isActive ? 600 : 500,
                         color: isActive ? 'var(--brand-primary)' : 'var(--text-secondary)',
                         backgroundColor: isActive ? 'var(--brand-primary-light)' : 'transparent',
@@ -190,18 +191,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
         </nav>
-
-        <div
-          style={{
-            padding: '1rem',
-            borderTop: '1px solid var(--border-subtle)',
-            backgroundColor: 'var(--bg-subtle)',
-          }}
-        >
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-            Campus Life v1.0 • BPUT 2026
-          </div>
-        </div>
       </aside>
     </>
   );
