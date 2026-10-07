@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useId } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useId } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Users,
@@ -198,10 +198,20 @@ export const StudentManagementPage: React.FC = () => {
   const urlBranch = searchParams.get('branch');
 
   // Compute all university branches & authorized branches for MANAGE_STUDENTS (view)
-  const allUniversityBranches = Array.from(new Set(degrees.flatMap((d) => d.branches || [])));
-  const accessibleBranches = role === 'MAIN_ADMIN'
-    ? allUniversityBranches
-    : getAccessibleBranches(userProfile, 'MANAGE_STUDENTS', 'view', allUniversityBranches);
+  const allUniversityBranches = useMemo(() => {
+    return Array.from(new Set(degrees.flatMap((d) => d.branches || [])));
+  }, [degrees]);
+
+  const accessibleBranches = useMemo(() => {
+    return role === 'MAIN_ADMIN'
+      ? allUniversityBranches
+      : getAccessibleBranches(userProfile, 'MANAGE_STUDENTS', 'view', allUniversityBranches);
+  }, [role, userProfile, allUniversityBranches]);
+
+  // Authorized branches for queryUsers: undefined for MAIN_ADMIN
+  const authorizedBranches = useMemo(() => {
+    return role === 'MAIN_ADMIN' ? undefined : accessibleBranches;
+  }, [role, accessibleBranches]);
 
   const canManageAcademic =
     role === 'MAIN_ADMIN' ||
@@ -215,21 +225,28 @@ export const StudentManagementPage: React.FC = () => {
   }, [urlBranch]);
 
   // Compute active degree branches and allowed years/semesters dynamically
-  const activeDegree =
-    degrees.find((d) => d.name.toLowerCase() === (formData.degree || '').toLowerCase()) ||
-    degrees[0] || {
-      id: 'default',
-      name: '',
-      durationYears: 4,
-      branches: [],
-      createdAt: '',
-      updatedAt: '',
-    };
-  const currentBranches = (activeDegree.branches || []).filter((b) =>
-    role === 'MAIN_ADMIN' || canPerformAction(userProfile, 'MANAGE_STUDENTS', b, 'add')
-  );
-  const availableYears = getAvailableYears(activeDegree.durationYears);
-  const availableSemesters = getAvailableSemesters(activeDegree.durationYears);
+  const activeDegree = useMemo(() => {
+    return (
+      degrees.find((d) => d.name.toLowerCase() === (formData.degree || '').toLowerCase()) ||
+      degrees[0] || {
+        id: 'default',
+        name: '',
+        durationYears: 4,
+        branches: [],
+        createdAt: '',
+        updatedAt: '',
+      }
+    );
+  }, [degrees, formData.degree]);
+
+  const currentBranches = useMemo(() => {
+    return (activeDegree.branches || []).filter((b) =>
+      role === 'MAIN_ADMIN' || canPerformAction(userProfile, 'MANAGE_STUDENTS', b, 'add')
+    );
+  }, [activeDegree, role, userProfile]);
+
+  const availableYears = useMemo(() => getAvailableYears(activeDegree.durationYears), [activeDegree.durationYears]);
+  const availableSemesters = useMemo(() => getAvailableSemesters(activeDegree.durationYears), [activeDegree.durationYears]);
 
   // Degree Change Handler: clears invalid branch/year/semesters
   const handleDegreeChange = (newDegreeName: string) => {
@@ -250,7 +267,7 @@ export const StudentManagementPage: React.FC = () => {
     }));
   };
 
-  // Fetch KPI statistics filtered by accessible branches
+  // Fetch KPI statistics filtered by accessible branches (decoupled from search/pagination)
   const fetchStats = useCallback(async () => {
     try {
       const all = await userService.getAllUsers();
@@ -276,6 +293,11 @@ export const StudentManagementPage: React.FC = () => {
     }
   }, [role, accessibleBranches]);
 
+  // Load KPI stats on mount and whenever role or branch scope changes
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
   // Fetch paginated student records filtered strictly by authorized branches
   const loadStudents = useCallback(async () => {
     setIsLoading(true);
@@ -287,7 +309,7 @@ export const StudentManagementPage: React.FC = () => {
         degree: departmentFilter === 'ALL' ? undefined : departmentFilter,
         department: departmentFilter === 'ALL' ? undefined : departmentFilter,
         branch: branchFilter === 'ALL' ? undefined : branchFilter,
-        authorizedBranches: role === 'MAIN_ADMIN' ? undefined : accessibleBranches,
+        authorizedBranches,
         year: yearFilter === 'ALL' ? undefined : Number(yearFilter),
         studentCategory: categoryFilter === 'ALL' ? undefined : (categoryFilter as StudentCategory),
         status: statusFilter,
@@ -309,8 +331,7 @@ export const StudentManagementPage: React.FC = () => {
     searchQuery,
     departmentFilter,
     branchFilter,
-    role,
-    accessibleBranches,
+    authorizedBranches,
     yearFilter,
     categoryFilter,
     statusFilter,
@@ -320,10 +341,64 @@ export const StudentManagementPage: React.FC = () => {
     pageSize,
   ]);
 
+  // Automatically query students when filter/search/page criteria change, with request cancellation safeguard
   useEffect(() => {
-    loadStudents();
-    fetchStats();
-  }, [loadStudents, fetchStats]);
+    let isCancelled = false;
+
+    const queryData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await userService.queryUsers({
+          role: 'STUDENT',
+          searchQuery,
+          degree: departmentFilter === 'ALL' ? undefined : departmentFilter,
+          department: departmentFilter === 'ALL' ? undefined : departmentFilter,
+          branch: branchFilter === 'ALL' ? undefined : branchFilter,
+          authorizedBranches,
+          year: yearFilter === 'ALL' ? undefined : Number(yearFilter),
+          studentCategory: categoryFilter === 'ALL' ? undefined : (categoryFilter as StudentCategory),
+          status: statusFilter,
+          sortBy,
+          sortOrder,
+          page: currentPage,
+          pageSize,
+        });
+
+        if (!isCancelled) {
+          setStudents(res.users);
+          setTotalCount(res.totalCount);
+          setTotalPages(res.totalPages);
+        }
+      } catch (err: any) {
+        if (!isCancelled) {
+          setError(err?.message || 'Failed to load student registry records.');
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    queryData();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    searchQuery,
+    departmentFilter,
+    branchFilter,
+    authorizedBranches,
+    yearFilter,
+    categoryFilter,
+    statusFilter,
+    sortBy,
+    sortOrder,
+    currentPage,
+    pageSize,
+  ]);
 
   // Reset all filters
   const handleResetFilters = () => {
@@ -978,7 +1053,7 @@ export const StudentManagementPage: React.FC = () => {
                   role === 'MAIN_ADMIN'
                     ? (departmentFilter !== 'ALL'
                         ? degrees.find((d) => d.name === departmentFilter)?.branches || []
-                        : Array.from(new Set(degrees.flatMap((d) => d.branches || []))))
+                        : allUniversityBranches)
                     : accessibleBranches
                 ).map((b) => (
                   <option key={b} value={b}>{b}</option>

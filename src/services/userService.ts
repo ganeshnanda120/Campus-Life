@@ -84,39 +84,100 @@ export interface DashboardStats {
 }
 
 class UserService {
+  private inFlightUsersPromise: Promise<UserRecord[]> | null = null;
+  private usersCache: { data: UserRecord[]; timestamp: number } | null = null;
+
+  invalidateUsersCache(): void {
+    this.usersCache = null;
+  }
+
   /**
    * Fetch all users from Firestore if connected, or fallback to the local synchronized repository.
    */
-  async getAllUsers(): Promise<UserRecord[]> {
-    if (isFirebaseConfigured && db) {
-      try {
-        const usersRef = collection(db, 'users');
-        const snapshot = await getDocs(usersRef);
-        if (!snapshot.empty) {
-          const list: UserRecord[] = [];
-          snapshot.forEach((d) => {
-            const raw = d.data() as UserRecord;
-            const norm =
-              raw.role === 'STUDENT'
-                ? normalizeStudentAcademicRecord(raw)
-                : raw.role === 'FACULTY'
-                ? normalizeFacultyAcademicRecord(raw)
-                : raw;
-            list.push(norm);
-          });
-          return list;
-        }
-      } catch (err) {
-        console.warn('Firestore getAllUsers failed, falling back to local store:', err);
-      }
+  async getAllUsers(forceRefresh = false): Promise<UserRecord[]> {
+    const now = Date.now();
+    if (!forceRefresh && this.usersCache && now - this.usersCache.timestamp < 3000) {
+      return this.usersCache.data;
     }
-    return getLocalUsers().map((u) =>
-      u.role === 'STUDENT'
-        ? normalizeStudentAcademicRecord(u)
-        : u.role === 'FACULTY'
-        ? normalizeFacultyAcademicRecord(u)
-        : u
-    );
+
+    if (this.inFlightUsersPromise) {
+      return this.inFlightUsersPromise;
+    }
+
+    this.inFlightUsersPromise = (async () => {
+      let result: UserRecord[];
+      if (isFirebaseConfigured && db) {
+        try {
+          const usersRef = collection(db, 'users');
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Firestore getAllUsers timed out')), 3500)
+          );
+          const snapshot = await Promise.race([getDocs(usersRef), timeoutPromise]);
+          if (!snapshot.empty) {
+            const list: UserRecord[] = [];
+            snapshot.forEach((d) => {
+              const raw = d.data() as UserRecord;
+              const norm =
+                raw.role === 'STUDENT'
+                  ? normalizeStudentAcademicRecord(raw)
+                  : raw.role === 'FACULTY'
+                  ? normalizeFacultyAcademicRecord(raw)
+                  : raw;
+              list.push(norm);
+            });
+
+            // Merge with local users to ensure locally provisioned accounts are preserved
+            const localUsers = getLocalUsers();
+            const userMap = new Map<string, UserRecord>();
+            for (const u of localUsers) {
+              const norm =
+                u.role === 'STUDENT'
+                  ? normalizeStudentAcademicRecord(u)
+                  : u.role === 'FACULTY'
+                  ? normalizeFacultyAcademicRecord(u)
+                  : u;
+              userMap.set(u.uid || u.email.toLowerCase(), norm);
+            }
+            for (const u of list) {
+              userMap.set(u.uid || u.email.toLowerCase(), u);
+            }
+            result = Array.from(userMap.values());
+            saveLocalUsers(result);
+          } else {
+            result = getLocalUsers().map((u) =>
+              u.role === 'STUDENT'
+                ? normalizeStudentAcademicRecord(u)
+                : u.role === 'FACULTY'
+                ? normalizeFacultyAcademicRecord(u)
+                : u
+            );
+          }
+        } catch (err) {
+          console.warn('Firestore getAllUsers failed, falling back to local store:', err);
+          result = getLocalUsers().map((u) =>
+            u.role === 'STUDENT'
+              ? normalizeStudentAcademicRecord(u)
+              : u.role === 'FACULTY'
+              ? normalizeFacultyAcademicRecord(u)
+              : u
+          );
+        }
+      } else {
+        result = getLocalUsers().map((u) =>
+          u.role === 'STUDENT'
+            ? normalizeStudentAcademicRecord(u)
+            : u.role === 'FACULTY'
+            ? normalizeFacultyAcademicRecord(u)
+            : u
+        );
+      }
+      this.usersCache = { data: result, timestamp: Date.now() };
+      return result;
+    })().finally(() => {
+      this.inFlightUsersPromise = null;
+    });
+
+    return this.inFlightUsersPromise;
   }
 
   /**
@@ -449,6 +510,7 @@ class UserService {
     const localUsers = getLocalUsers();
     localUsers.unshift(newUser);
     saveLocalUsers(localUsers);
+    this.invalidateUsersCache();
 
     // 5. Append forensic audit log
     await auditService.logAction({
@@ -536,6 +598,7 @@ class UserService {
     if (index !== -1) {
       localUsers[index] = updatedUser;
       saveLocalUsers(localUsers);
+      this.invalidateUsersCache();
     }
 
     // Record audit log
@@ -588,6 +651,7 @@ class UserService {
     if (idx !== -1) {
       localUsers[idx] = updatedUser;
       saveLocalUsers(localUsers);
+      this.invalidateUsersCache();
     }
 
     await auditService.logAction({
@@ -636,6 +700,7 @@ class UserService {
     if (idx !== -1) {
       localUsers[idx] = updatedUser;
       saveLocalUsers(localUsers);
+      this.invalidateUsersCache();
     }
 
     await auditService.logAction({
@@ -698,6 +763,7 @@ class UserService {
     if (idx !== -1) {
       localUsers[idx] = updatedUser;
       saveLocalUsers(localUsers);
+      this.invalidateUsersCache();
     }
 
     // Audit logs for added/revoked permissions
@@ -796,6 +862,7 @@ class UserService {
     if (idx !== -1) {
       localUsers[idx] = updatedUser;
       saveLocalUsers(localUsers);
+      this.invalidateUsersCache();
     }
 
     await auditService.logAction({
@@ -926,6 +993,7 @@ class UserService {
     if (idx !== -1) {
       localUsers[idx] = updatedUser;
       saveLocalUsers(localUsers);
+      this.invalidateUsersCache();
     }
 
     await auditService.logAction({
