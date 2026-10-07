@@ -6,18 +6,21 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    // Attachments for complaints, requests, and gate pass
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // 1. Attachments for complaints, requests, and gate pass (max 10MB)
     match /attachments/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() &&
-        request.auth.uid == userId &&
+      allow write: if isOwner(userId) &&
         request.resource.size < 10 * 1024 * 1024 &&
         (request.resource.contentType.matches('image/.*') ||
          request.resource.contentType.matches('video/.*') ||
          request.resource.contentType == 'application/pdf');
     }
 
-    // Official circulars & notice attachments
+    // 2. Official circulars & notice attachments (max 10MB)
     match /notices/{allPaths=**} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() &&
@@ -26,22 +29,34 @@ service firebase.storage {
          request.resource.contentType == 'application/pdf');
     }
 
-    // Lost & Found item imagery
+    // 3. Lost & Found item imagery (max 5MB)
     match /lostFound/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() &&
-        request.auth.uid == userId &&
+      allow write: if isOwner(userId) &&
         request.resource.size < 5 * 1024 * 1024 &&
         request.resource.contentType.matches('image/.*');
     }
 
-    // Profile photos: max 2MB, safe image mime types only
+    // 4. Profile photos: max 2MB, safe image mime types only
     match /profilePhotos/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() &&
-        request.auth.uid == userId &&
+      allow write: if isOwner(userId) &&
         request.resource.size < 2 * 1024 * 1024 &&
         request.resource.contentType.matches('image/.*');
+    }
+
+    // 5. Digital certificates and verified exports (max 10MB)
+    match /certificates/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() &&
+        request.resource.size < 10 * 1024 * 1024 &&
+        (request.resource.contentType == 'application/pdf' ||
+         request.resource.contentType.matches('image/.*'));
+    }
+
+    // 6. Fail-closed fallback: deny any unmapped paths
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }

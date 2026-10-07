@@ -305,20 +305,6 @@ service cloud.firestore {
     }
 
     // --------------------------------------------------------------------------
-    // Attendance Records (Student reading own, Faculty/Admin marking)
-    // --------------------------------------------------------------------------
-    match /attendanceRecords/{recordId} {
-      allow read: if isAuthenticated() &&
-        (isOwner(resource.data.studentId) ||
-         isMainAdmin() ||
-         hasScopedPermission('MANAGE_ATTENDANCE', resource.data.get('branch', resource.data.get('branchId', ''))) ||
-         (isFaculty() && hasBranchAccess(resource.data.get('branch', resource.data.get('branchId', '')))));
-      allow create, update: if isMainAdmin() ||
-        hasScopedPermission('MANAGE_ATTENDANCE', request.resource.data.get('branch', request.resource.data.get('branchId', '')));
-      allow delete: if isMainAdmin();
-    }
-
-    // --------------------------------------------------------------------------
     // Timetables and Class Updates
     // --------------------------------------------------------------------------
     match /timetables/{timetableId} {
