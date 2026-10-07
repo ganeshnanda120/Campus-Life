@@ -320,7 +320,7 @@ function markDegreesInitialized(): void {
   safeStorage.setItem(DEGREES_INITIALIZED_KEY, 'true');
 }
 
-function getLocalDegrees(): DegreeProgram[] {
+export function getLocalDegrees(): DegreeProgram[] {
   try {
     const raw = safeStorage.getItem(DEGREES_STORAGE_KEY);
     if (raw) {

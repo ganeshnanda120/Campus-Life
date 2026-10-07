@@ -12,6 +12,9 @@ import {
   Star,
   Check,
   Flame,
+  X,
+  Send,
+  MessageSquare,
 } from 'lucide-react';
 import { StatCard, Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -33,6 +36,7 @@ import type {
   ComplaintPriority,
   ComplaintStatus,
   AttachmentFile,
+  UserRecord,
 } from '../../types';
 
 export const ComplaintsPage: React.FC = () => {
@@ -73,6 +77,19 @@ export const ComplaintsPage: React.FC = () => {
   const [newAttachments, setNewAttachments] = useState<AttachmentFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
+  // Branch & Tagged Member Selector state for student complaint creation (Sections 2, 4, 5, 29)
+  const [eligibleMembers, setEligibleMembers] = useState<UserRecord[]>([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [memberLoadError, setMemberLoadError] = useState<string | null>(null);
+  const [tagSearch, setTagSearch] = useState('');
+  const [tagRoleTab, setTagRoleTab] = useState<'ALL' | 'FACULTY' | 'STAFF' | 'SUB_ADMIN'>('ALL');
+  const [selectedTaggedIds, setSelectedTaggedIds] = useState<string[]>([]);
+
+  // Response state for Tagged members / staff / admin
+  const [responseMessage, setResponseMessage] = useState('');
+  const [responseNewStatus, setResponseNewStatus] = useState<ComplaintStatus | ''>('');
+  const [isSubmittingResponse, setIsSubmittingResponse] = useState(false);
+
   // Admin action modals
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assignDept, setAssignDept] = useState('Maintenance');
@@ -95,6 +112,41 @@ export const ComplaintsPage: React.FC = () => {
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Load eligible members whenever student opens Create Complaint modal
+  useEffect(() => {
+    if (isNewModalOpen && role === 'STUDENT' && userProfile) {
+      setIsLoadingMembers(true);
+      setMemberLoadError(null);
+      setTagSearch('');
+      setTagRoleTab('ALL');
+      setSelectedTaggedIds([]);
+      complaintService
+        .getEligibleTagMembers(userProfile)
+        .then((members) => {
+          setEligibleMembers(members);
+        })
+        .catch((err: any) => {
+          setMemberLoadError(err?.message || 'Unable to load eligible members for your branch.');
+        })
+        .finally(() => {
+          setIsLoadingMembers(false);
+        });
+    }
+  }, [isNewModalOpen, role, userProfile]);
+
+  // Tag search strictly inside eligible branch members (Section 11 & 12)
+  const filteredEligibleMembers = eligibleMembers.filter((m) => {
+    if (tagRoleTab !== 'ALL' && m.role !== tagRoleTab) return false;
+    if (tagSearch.trim()) {
+      const q = tagSearch.toLowerCase();
+      const nameMatch = (m.name || '').toLowerCase().includes(q);
+      const emailMatch = (m.email || '').toLowerCase().includes(q);
+      const deptMatch = (m.department || '').toLowerCase().includes(q);
+      return nameMatch || emailMatch || deptMatch;
+    }
+    return true;
+  });
+
   const loadComplaints = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -104,14 +156,14 @@ export const ComplaintsPage: React.FC = () => {
       } else if (role === 'STAFF' && userProfile?.uid) {
         filters.staffId = userProfile.uid;
       }
-      const data = await complaintService.getComplaints(filters);
+      const data = await complaintService.getComplaints(filters, userProfile);
       setComplaints(data);
     } catch (err) {
       console.warn('Failed to load complaints:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [role, userProfile?.uid]);
+  }, [role, userProfile]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -119,19 +171,18 @@ export const ComplaintsPage: React.FC = () => {
     if (role === 'STUDENT' && userProfile?.uid) {
       filters.studentId = userProfile.uid;
     } else if (role === 'STAFF' && userProfile?.uid) {
-      // Staff members see complaints assigned to them or unassigned
       filters.staffId = userProfile.uid;
     }
 
     const unsubscribe = complaintService.subscribeComplaints(filters, (data) => {
       setComplaints(data);
       setIsLoading(false);
-    });
+    }, userProfile);
 
     return () => {
       unsubscribe();
     };
-  }, [role, userProfile?.uid]);
+  }, [role, userProfile]);
 
   // Operational metrics
   const onTimeCount = complaints.filter((c) => c.slaStatus === 'WITHIN_SLA' && c.status !== 'RESOLVED' && c.status !== 'CLOSED').length;
@@ -208,6 +259,7 @@ export const ComplaintsPage: React.FC = () => {
     setIsSubmitting(true);
     setFormError(null);
     try {
+      const studentBranch = (userProfile?.branch || userProfile?.department || '').trim();
       const created = await complaintService.createComplaint({
         studentId: userProfile?.uid || 'student_uid_001',
         studentName: userProfile?.name || 'Student Member',
@@ -216,6 +268,10 @@ export const ComplaintsPage: React.FC = () => {
         title: newTitle.trim(),
         location: newLocation.trim(),
         description: newDescription.trim(),
+        branch: studentBranch,
+        department: userProfile?.department || '',
+        degree: userProfile?.degree || '',
+        taggedUserIds: selectedTaggedIds,
         attachments: newAttachments,
       });
 
@@ -224,6 +280,7 @@ export const ComplaintsPage: React.FC = () => {
       setNewLocation('');
       setNewDescription('');
       setNewAttachments([]);
+      setSelectedTaggedIds([]);
       setToastMessage(`Complaint #${created.complaintId} has been successfully registered.`);
       setTimeout(() => setToastMessage(null), 5000);
       loadComplaints();
@@ -231,6 +288,31 @@ export const ComplaintsPage: React.FC = () => {
       setFormError(err.message || 'Failed to submit complaint.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Official response for tagged members, staff, or admin (Section 15, 32)
+  const handleOfficialResponseSubmit = async () => {
+    if (!selectedComplaint || !responseMessage.trim()) return;
+    setIsSubmittingResponse(true);
+    try {
+      const updated = await complaintService.respondToComplaint(selectedComplaint.id, {
+        actorId: userProfile?.uid || 'user_001',
+        actorName: userProfile?.name || 'Authorized Member',
+        actorRole: role || 'FACULTY',
+        message: responseMessage.trim(),
+        newStatus: responseNewStatus ? (responseNewStatus as ComplaintStatus) : undefined,
+      });
+      setSelectedComplaint(updated);
+      setResponseMessage('');
+      setResponseNewStatus('');
+      setToastMessage(`Response successfully posted to Complaint #${updated.complaintId}.`);
+      setTimeout(() => setToastMessage(null), 5000);
+      loadComplaints();
+    } catch (err: any) {
+      alert(err.message || 'Failed to submit response.');
+    } finally {
+      setIsSubmittingResponse(false);
     }
   };
 
@@ -568,8 +650,8 @@ export const ComplaintsPage: React.FC = () => {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>ID & Category</th>
-                  <th>Title & Location</th>
+                  <th>ID, Category & Branch</th>
+                  <th>Title & Tagged Members</th>
                   <th>Priority</th>
                   <th>Ageing / SLA</th>
                   <th>Assigned Staff</th>
@@ -578,36 +660,72 @@ export const ComplaintsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {paginatedComplaints.map((c) => (
-                  <tr key={c.id}>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>#{c.complaintId}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{c.category}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 500 }}>{c.title}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{c.location}</div>
-                    </td>
-                    <td>{getPriorityBadge(c.priority)}</td>
-                    <td>{getSlaBadge(c)}</td>
-                    <td>
-                      <div style={{ fontSize: '0.85rem' }}>{c.assignedStaffName || 'Unassigned'}</div>
-                      {c.assignedDepartment && (
-                        <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{c.assignedDepartment}</div>
-                      )}
-                    </td>
-                    <td>{getStatusBadge(c.status)}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedComplaint(c)}
-                      >
-                        Timeline / Detail
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {paginatedComplaints.map((c) => {
+                  const isTaggedToCurrentUser = Boolean(
+                    userProfile?.uid && c.taggedUserIds && c.taggedUserIds.includes(userProfile.uid)
+                  );
+                  return (
+                    <tr key={c.id}>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>#{c.complaintId}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{c.category}</span>
+                          {c.branch && (
+                            <Badge variant="info" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
+                              {c.branch}
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{c.title}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{c.location}</div>
+                        {(isTaggedToCurrentUser || (c.taggedUsers && c.taggedUsers.length > 0)) && (
+                          <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.3rem' }}>
+                            {isTaggedToCurrentUser && (
+                              <Badge variant="warning" style={{ fontSize: '0.68rem', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                                <UserCheck size={10} /> Tagged to You
+                              </Badge>
+                            )}
+                            {c.taggedUsers?.map((tu) => (
+                              <span
+                                key={tu.uid}
+                                style={{
+                                  fontSize: '0.68rem',
+                                  color: 'var(--color-text-muted)',
+                                  backgroundColor: 'var(--bg-subtle)',
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  border: '1px solid var(--border-subtle)',
+                                }}
+                              >
+                                @{tu.name} ({tu.role})
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td>{getPriorityBadge(c.priority)}</td>
+                      <td>{getSlaBadge(c)}</td>
+                      <td>
+                        <div style={{ fontSize: '0.85rem' }}>{c.assignedStaffName || 'Unassigned'}</div>
+                        {c.assignedDepartment && (
+                          <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{c.assignedDepartment}</div>
+                        )}
+                      </td>
+                      <td>{getStatusBadge(c.status)}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedComplaint(c)}
+                        >
+                          Timeline / Detail
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -658,6 +776,29 @@ export const ComplaintsPage: React.FC = () => {
         <form onSubmit={handleCreateComplaint} style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }}>
           {formError && <Alert variant="danger">{formError}</Alert>}
 
+          {/* Authoritative Student Branch Display (Section 8 & 21) */}
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="input-label" style={{ marginBottom: '0.25rem' }}>
+              Student Branch (Authoritative)
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="text"
+                className="input-field"
+                value={(userProfile?.branch || userProfile?.department || 'Unassigned Branch').trim()}
+                disabled
+                readOnly
+                style={{ backgroundColor: 'var(--bg-subtle)', cursor: 'not-allowed', fontWeight: 600, flex: 1 }}
+              />
+              <Badge variant="info">
+                {(userProfile?.branch || userProfile?.department || 'Unassigned').trim()}
+              </Badge>
+            </div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+              Assigned from your official student academic profile. Manual changes are prohibited.
+            </span>
+          </div>
+
           <div className="form-grid-2">
             <div className="form-group" style={{ margin: 0 }}>
               <label htmlFor={catId} className="input-label">
@@ -705,6 +846,161 @@ export const ComplaintsPage: React.FC = () => {
               onChange={(e) => setNewTitle(e.target.value)}
               required
             />
+          </div>
+
+          {/* Tag Member (Optional) Selector (Section 4, 5, 6, 7, 11, 12, 29, 30, 42, 43) */}
+          <div className="form-group" style={{ margin: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem', flexWrap: 'wrap', gap: '0.25rem' }}>
+              <label className="input-label" style={{ margin: 0 }}>
+                Tag Member (Optional)
+              </label>
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                Scope: {(userProfile?.branch || userProfile?.department || 'Branch').trim()} only
+              </span>
+            </div>
+
+            {/* Selected Member Chips */}
+            {selectedTaggedIds.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                {selectedTaggedIds.map((id) => {
+                  const m = eligibleMembers.find((u) => u.uid === id);
+                  return (
+                    <span
+                      key={id}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '9999px',
+                        backgroundColor: 'var(--brand-primary, #3b82f6)',
+                        color: '#ffffff',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                      }}
+                    >
+                      <span>{m?.name || id} ({m?.role || 'Member'})</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTaggedIds((prev) => prev.filter((x) => x !== id))}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#ffffff',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: 0,
+                        }}
+                        aria-label="Remove tagged member"
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {isLoadingMembers ? (
+              <div style={{ padding: '0.85rem', textAlign: 'center', backgroundColor: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                <RefreshCw size={14} className="spin" style={{ display: 'inline', marginRight: '0.5rem' }} />
+                Loading available members...
+              </div>
+            ) : memberLoadError ? (
+              <div style={{ padding: '0.75rem', backgroundColor: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', color: 'var(--color-danger, #ef4444)', fontSize: '0.82rem' }}>
+                {memberLoadError}
+              </div>
+            ) : (
+              <div style={{ border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '0.65rem', backgroundColor: 'var(--bg-subtle)' }}>
+                {/* Search & Role Tabs (Search inside branch scope only!) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="Search within authorized branch members..."
+                      value={tagSearch}
+                      onChange={(e) => setTagSearch(e.target.value)}
+                      style={{ paddingLeft: '1.8rem', fontSize: '0.8rem', height: '32px' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    {(['ALL', 'FACULTY', 'STAFF', 'SUB_ADMIN'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setTagRoleTab(t)}
+                        style={{
+                          padding: '0.2rem 0.5rem',
+                          fontSize: '0.72rem',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--border-subtle)',
+                          backgroundColor: tagRoleTab === t ? 'var(--brand-primary, #3b82f6)' : 'var(--bg-surface)',
+                          color: tagRoleTab === t ? '#ffffff' : 'var(--color-text-main)',
+                          cursor: 'pointer',
+                          fontWeight: tagRoleTab === t ? 600 : 400,
+                        }}
+                      >
+                        {t === 'ALL' ? 'All Roles' : t.replace('_', ' ')}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Eligible Member List */}
+                <div style={{ maxHeight: '160px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                  {filteredEligibleMembers.length === 0 ? (
+                    <div style={{ padding: '0.85rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                      No faculty, staff, or sub-admin is currently available for this branch.
+                    </div>
+                  ) : (
+                    filteredEligibleMembers.map((m) => {
+                      const isSelected = selectedTaggedIds.includes(m.uid);
+                      return (
+                        <label
+                          key={m.uid}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '0.35rem 0.5rem',
+                            borderRadius: 'var(--radius-sm)',
+                            backgroundColor: isSelected ? 'var(--brand-primary-light, #eff6ff)' : 'var(--bg-surface)',
+                            cursor: 'pointer',
+                            border: isSelected ? '1px solid var(--brand-primary)' : '1px solid transparent',
+                            fontSize: '0.82rem',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {
+                                setSelectedTaggedIds((prev) =>
+                                  prev.includes(m.uid) ? prev.filter((id) => id !== m.uid) : [...prev, m.uid]
+                                );
+                              }}
+                            />
+                            <div>
+                              <span style={{ fontWeight: 500 }}>{m.name}</span>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginLeft: '0.4rem' }}>
+                                {m.department || (m.assignedBranches || []).join(', ')}
+                              </span>
+                            </div>
+                          </div>
+                          <Badge variant={m.role === 'FACULTY' ? 'info' : m.role === 'STAFF' ? 'neutral' : 'warning'}>
+                            {m.role.replace('_', ' ')}
+                          </Badge>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="form-group" style={{ margin: 0 }}>
@@ -840,12 +1136,44 @@ export const ComplaintsPage: React.FC = () => {
                 {selectedComplaint.description}
               </div>
 
-              <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+              <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.65rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                <div>Branch Scope: <strong><Badge variant="info">{selectedComplaint.branch || 'General'}</Badge></strong></div>
+                {selectedComplaint.department && <div>Department: <strong>{selectedComplaint.department}</strong></div>}
                 <div>Reported by: <strong>{selectedComplaint.studentName}</strong></div>
                 <div>Submitted: {new Date(selectedComplaint.submittedAt).toLocaleString()}</div>
                 <div>Assigned: <strong>{selectedComplaint.assignedStaffName || 'Unassigned'}</strong></div>
                 <div>SLA Target: {selectedComplaint.expectedResolutionAt ? new Date(selectedComplaint.expectedResolutionAt).toLocaleDateString() : 'N/A'}</div>
               </div>
+
+              {selectedComplaint.taggedUsers && selectedComplaint.taggedUsers.length > 0 && (
+                <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '0.35rem', color: 'var(--color-text-secondary)' }}>
+                    Tagged Authorized Members ({selectedComplaint.taggedUsers.length}):
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                    {selectedComplaint.taggedUsers.map((tu) => (
+                      <span
+                        key={tu.uid}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: '0.75rem',
+                          backgroundColor: tu.uid === userProfile?.uid ? 'var(--brand-primary-light, #eff6ff)' : 'var(--bg-surface)',
+                          border: tu.uid === userProfile?.uid ? '1px solid var(--brand-primary)' : '1px solid var(--border-subtle)',
+                          fontWeight: tu.uid === userProfile?.uid ? 600 : 400,
+                        }}
+                      >
+                        <UserCheck size={12} />
+                        {tu.name} ({tu.role}) {tu.department ? `• ${tu.department}` : ''}
+                        {tu.uid === userProfile?.uid && ' [You]'}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Attachments preview */}
@@ -934,6 +1262,55 @@ export const ComplaintsPage: React.FC = () => {
                     Awaiting student feedback verification.
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Tagged Member & Staff Official Response Section (Section 15, 32) */}
+            {(isStaffOrAdmin || (userProfile?.uid && selectedComplaint.taggedUserIds?.includes(userProfile.uid))) && (
+              <div style={{ border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '1rem', backgroundColor: 'var(--bg-subtle)' }}>
+                <h4 style={{ margin: '0 0 0.35rem 0', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <MessageSquare size={16} /> Official Response / Progress Update
+                </h4>
+                <p style={{ margin: '0 0 0.65rem 0', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                  {selectedComplaint.taggedUserIds?.includes(userProfile?.uid || '')
+                    ? 'You are tagged in this complaint. You can post an official response or update its progress.'
+                    : 'Post an operational response or status update to this complaint.'}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  <textarea
+                    className="input-field"
+                    rows={2}
+                    placeholder="Enter official response, progress update, or resolution remarks..."
+                    value={responseMessage}
+                    onChange={(e) => setResponseMessage(e.target.value)}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Status:</span>
+                      <select
+                        className="input-field"
+                        value={responseNewStatus}
+                        onChange={(e) => setResponseNewStatus(e.target.value as ComplaintStatus)}
+                        style={{ width: 'auto', fontSize: '0.8rem', padding: '0.3rem 0.5rem' }}
+                      >
+                        <option value="">Leave Unchanged ({selectedComplaint.status.replace('_', ' ')})</option>
+                        <option value="UNDER_REVIEW">Under Review</option>
+                        <option value="IN_PROGRESS">In Progress</option>
+                        <option value="RESOLVED">Resolved</option>
+                        <option value="CLOSED">Closed</option>
+                      </select>
+                    </div>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      leftIcon={<Send size={14} />}
+                      disabled={isSubmittingResponse || !responseMessage.trim()}
+                      onClick={handleOfficialResponseSubmit}
+                    >
+                      {isSubmittingResponse ? 'Posting...' : 'Post Response'}
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
 

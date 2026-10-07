@@ -45,27 +45,49 @@ service cloud.firestore {
       return isMainAdmin() || ((isSubAdmin() || isFaculty() || isStaff()) && perm in getUserData().get('permissions', []));
     }
 
+    // Branch-Scoped Authorization Functions (Sections 11 & 12)
+    function getUserAssignedBranches() {
+      return hasUserData() ? getUserData().get('assignedBranches', []) : [];
+    }
+
+    function hasBranchAccess(recordBranch) {
+      return isMainAdmin() || (recordBranch != null && recordBranch != '' && recordBranch in getUserAssignedBranches());
+    }
+
+    function hasScopedPermission(perm, recordBranch) {
+      return isMainAdmin() || (
+        hasPermission(perm) &&
+        (recordBranch == null || recordBranch == '' || hasBranchAccess(recordBranch))
+      );
+    }
+
     // --------------------------------------------------------------------------
     // Users Collection (Administrator-Controlled Authorization Layer)
     // --------------------------------------------------------------------------
     match /users/{userId} {
-      // Users can read their own profile; users whose authenticated email matches the record can read their pre-registered profile; authorized administrators can read user records
+      // Users can read their own profile; users whose authenticated email matches the record can read their pre-registered profile; authorized administrators can read user records within branch scope
+      // Students can also read active Faculty, Staff, and Sub-Admin profiles that belong to the student's authorized branch for complaint tagging (Sections 2, 19)
       allow read: if isOwner(userId) ||
         (isAuthenticated() && request.auth.token.email != null && resource.data.email == request.auth.token.email) ||
         isMainAdmin() ||
-        hasPermission('MANAGE_STUDENTS') ||
+        (hasPermission('MANAGE_STUDENTS') && (resource.data.role != 'STUDENT' || hasBranchAccess(resource.data.get('branch', resource.data.get('department', ''))))) ||
+        (hasPermission('MANAGE_FACULTY') && (resource.data.role != 'FACULTY' || hasBranchAccess(resource.data.get('department', resource.data.get('branch', ''))))) ||
+        (hasPermission('MANAGE_STAFF') && (resource.data.role != 'STAFF' || hasBranchAccess(resource.data.get('department', resource.data.get('branch', ''))))) ||
         hasPermission('MANAGE_SUB_ADMINS') ||
-        hasPermission('MANAGE_FACULTY') ||
-        hasPermission('MANAGE_STAFF');
+        hasPermission('CAN_GRANT_PERMISSIONS') ||
+        (isAuthenticated() && getUserRole() == 'STUDENT' &&
+         resource.data.role in ['FACULTY', 'STAFF', 'SUB_ADMIN'] &&
+         resource.data.get('isActive', true) == true &&
+         (getUserData().get('branch', getUserData().get('department', '')) in resource.data.get('assignedBranches', [resource.data.get('branch', resource.data.get('department', ''))])));
 
-      // Administrators can create pre-registered users.
+      // Administrators can create pre-registered users within their assigned branch scope.
       // An authenticated user activating their account can create their own profile at /users/{auth.uid}
       // matching their authenticated email, but cannot assign themselves an admin role.
       allow create: if isMainAdmin() ||
-        hasPermission('MANAGE_STUDENTS') ||
+        (hasPermission('MANAGE_STUDENTS') && request.resource.data.role == 'STUDENT' && hasBranchAccess(request.resource.data.get('branch', request.resource.data.get('department', '')))) ||
+        (hasPermission('MANAGE_FACULTY') && request.resource.data.role == 'FACULTY' && hasBranchAccess(request.resource.data.get('department', request.resource.data.get('branch', '')))) ||
+        (hasPermission('MANAGE_STAFF') && request.resource.data.role == 'STAFF' && hasBranchAccess(request.resource.data.get('department', request.resource.data.get('branch', '')))) ||
         hasPermission('MANAGE_SUB_ADMINS') ||
-        hasPermission('MANAGE_FACULTY') ||
-        hasPermission('MANAGE_STAFF') ||
         (isOwner(userId) &&
           request.auth.token.email != null &&
           request.resource.data.email == request.auth.token.email &&
@@ -74,28 +96,36 @@ service cloud.firestore {
         );
 
       // Update constraints:
-      // Admins have update rights according to their specific permissions.
+      // Admins have update rights according to their specific permissions and branch scope.
       // Normal users may complete initial activation or update personal contact info (phone, photoUrl).
-      // They CANNOT alter role, permissions, isActive, studentId, rollNumber, or employeeId.
+      // They CANNOT alter role, permissions, scopedPermissions, assignedBranches, isActive, studentId, rollNumber, or employeeId.
       allow update: if isMainAdmin() ||
-        (hasPermission('MANAGE_STUDENTS') && resource.data.role == 'STUDENT') ||
-        (hasPermission('MANAGE_FACULTY') && resource.data.role == 'FACULTY') ||
-        (hasPermission('MANAGE_STAFF') && resource.data.role == 'STAFF') ||
+        (hasPermission('MANAGE_STUDENTS') && resource.data.role == 'STUDENT' &&
+         hasBranchAccess(resource.data.get('branch', resource.data.get('department', ''))) &&
+         hasBranchAccess(request.resource.data.get('branch', request.resource.data.get('department', '')))) ||
+        (hasPermission('MANAGE_FACULTY') && resource.data.role == 'FACULTY' &&
+         hasBranchAccess(resource.data.get('department', resource.data.get('branch', ''))) &&
+         hasBranchAccess(request.resource.data.get('department', request.resource.data.get('branch', '')))) ||
+        (hasPermission('MANAGE_STAFF') && resource.data.role == 'STAFF' &&
+         hasBranchAccess(resource.data.get('department', resource.data.get('branch', ''))) &&
+         hasBranchAccess(request.resource.data.get('department', request.resource.data.get('branch', '')))) ||
         (hasPermission('MANAGE_SUB_ADMINS') && resource.data.role == 'SUB_ADMIN') ||
+        (hasPermission('CAN_GRANT_PERMISSIONS') &&
+         (resource.data.role == 'SUB_ADMIN' || resource.data.role == 'FACULTY' || resource.data.role == 'STAFF')) ||
         (isOwner(userId) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            'role', 'permissions', 'isActive', 'studentId', 'rollNumber', 'employeeId', 'department', 'branch', 'year'
+            'role', 'permissions', 'scopedPermissions', 'assignedBranches', 'isActive', 'studentId', 'rollNumber', 'employeeId', 'department', 'branch', 'year'
           ])
         ) ||
         (isAuthenticated() &&
           request.auth.token.email != null &&
           resource.data.email == request.auth.token.email &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            'role', 'permissions', 'isActive', 'studentId', 'rollNumber', 'employeeId', 'department', 'branch', 'year'
+            'role', 'permissions', 'scopedPermissions', 'assignedBranches', 'isActive', 'studentId', 'rollNumber', 'employeeId', 'department', 'branch', 'year'
           ])
         );
 
-      // Only MAIN_ADMIN can deactivate/delete records, or an authenticated user cleaning up their own unactivated legacy pre-registration doc
+      // Only MAIN_ADMIN can deactivate/delete records, or an authenticated user cleaning up their own unactivated legacy pre-registered doc
       allow delete: if isMainAdmin() ||
         (isAuthenticated() &&
           request.auth.token.email != null &&
@@ -108,23 +138,46 @@ service cloud.firestore {
     // Operational Collections (Requests, Complaints, GatePasses)
     // --------------------------------------------------------------------------
     match /requests/{requestId} {
-      allow read: if isOwner(resource.data.studentId) || isMainAdmin() || hasPermission('MANAGE_REQUESTS');
+      allow read: if isOwner(resource.data.studentId) || isMainAdmin() ||
+        hasScopedPermission('MANAGE_REQUESTS', resource.data.get('branch', '')) ||
+        hasScopedPermission('APPROVE_REQUESTS', resource.data.get('branch', ''));
       allow create: if isAuthenticated() && request.resource.data.studentId == request.auth.uid;
-      allow update: if isMainAdmin() || hasPermission('MANAGE_REQUESTS') ||
+      allow update: if isMainAdmin() ||
+        hasScopedPermission('MANAGE_REQUESTS', resource.data.get('branch', '')) ||
+        hasScopedPermission('APPROVE_REQUESTS', resource.data.get('branch', '')) ||
         (isOwner(resource.data.studentId) && resource.data.status == 'PENDING');
       allow delete: if isMainAdmin();
     }
 
+    // Branch-Scoped Complaint Box Authorization (Sections 18, 19, 20, 21)
     match /complaints/{complaintId} {
+      // 1. Read: Creator student, Main Admin, Directly Tagged Member, Directly Assigned Staff, or Branch-scoped Staff/Faculty with complaints permission
       allow read: if isOwner(resource.data.studentId) ||
         isMainAdmin() ||
-        hasPermission('MANAGE_COMPLAINTS') ||
-        (isAuthenticated() && resource.data.assignedStaffId == request.auth.uid);
-      allow create: if isAuthenticated() && request.resource.data.studentId == request.auth.uid;
+        (isAuthenticated() && (request.auth.uid in resource.data.get('taggedUserIds', []))) ||
+        (isAuthenticated() && resource.data.get('assignedStaffId', '') == request.auth.uid) ||
+        hasScopedPermission('MANAGE_COMPLAINTS', resource.data.get('branch', '')) ||
+        hasScopedPermission('RESPOND_TO_COMPLAINTS', resource.data.get('branch', ''));
+
+      // 2. Create: Authenticated student matching uid, complaint branch MUST match student's authoritative profile branch
+      allow create: if isAuthenticated() &&
+        request.resource.data.studentId == request.auth.uid &&
+        (request.resource.data.branch == getUserData().get('branch', getUserData().get('department', ''))) &&
+        request.resource.data.get('taggedUserIds', []).size() <= 20;
+
+      // 3. Update: Main Admin, Scoped Complaint Manager, Tagged Member / Assigned Staff (response/status update without tampering branch or studentId), or Student submitting feedback
       allow update: if isMainAdmin() ||
-        hasPermission('MANAGE_COMPLAINTS') ||
-        (isAuthenticated() && resource.data.assignedStaffId == request.auth.uid) ||
-        (isOwner(resource.data.studentId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feedback']));
+        hasScopedPermission('MANAGE_COMPLAINTS', resource.data.get('branch', '')) ||
+        (((isAuthenticated() && (request.auth.uid in resource.data.get('taggedUserIds', []))) ||
+          (isAuthenticated() && resource.data.get('assignedStaffId', '') == request.auth.uid) ||
+          hasScopedPermission('RESPOND_TO_COMPLAINTS', resource.data.get('branch', ''))) &&
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+           'studentId', 'branch', 'taggedUserIds', 'category', 'submittedAt', 'studentEmail', 'studentName'
+         ])) ||
+        (isOwner(resource.data.studentId) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feedback', 'timeline', 'updatedAt']));
+
+      // 4. Delete: Strictly restricted to MAIN_ADMIN
       allow delete: if isMainAdmin();
     }
 
@@ -258,11 +311,10 @@ service cloud.firestore {
       allow read: if isAuthenticated() &&
         (isOwner(resource.data.studentId) ||
          isMainAdmin() ||
-         hasPermission('MANAGE_ATTENDANCE') ||
-         isFaculty());
+         hasScopedPermission('MANAGE_ATTENDANCE', resource.data.get('branch', resource.data.get('branchId', ''))) ||
+         (isFaculty() && hasBranchAccess(resource.data.get('branch', resource.data.get('branchId', '')))));
       allow create, update: if isMainAdmin() ||
-        hasPermission('MANAGE_ATTENDANCE') ||
-        (isAuthenticated() && isFaculty());
+        hasScopedPermission('MANAGE_ATTENDANCE', request.resource.data.get('branch', request.resource.data.get('branchId', '')));
       allow delete: if isMainAdmin();
     }
 
@@ -327,6 +379,47 @@ service cloud.firestore {
         hasPermission('MANAGE_FACULTY') ||
         hasPermission('MANAGE_SUB_ADMINS') ||
         hasPermission('MANAGE_SETTINGS');
+    }
+
+    // --------------------------------------------------------------------------
+    // Attendance Sessions & Records (Branch-Scoped Classroom Operations)
+    // --------------------------------------------------------------------------
+    match /attendanceSessions/{sessionId} {
+      allow read: if isAuthenticated() && (
+        isMainAdmin() ||
+        hasScopedPermission('MANAGE_ATTENDANCE', resource.data.get('branch', ''))
+      );
+      allow create: if isAuthenticated() && (
+        isMainAdmin() ||
+        (hasScopedPermission('MANAGE_ATTENDANCE', request.resource.data.get('branch', '')) &&
+         hasBranchAccess(request.resource.data.get('branch', '')))
+      );
+      allow update: if isAuthenticated() && (
+        isMainAdmin() ||
+        (hasScopedPermission('MANAGE_ATTENDANCE', resource.data.get('branch', '')) &&
+         hasBranchAccess(resource.data.get('branch', '')))
+      );
+      allow delete: if isMainAdmin();
+    }
+
+    match /attendanceRecords/{recordId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.studentId) ||
+        resource.data.studentId == getUserData().get('studentId', '') ||
+        isMainAdmin() ||
+        hasScopedPermission('MANAGE_ATTENDANCE', resource.data.get('branch', ''))
+      );
+      allow create: if isAuthenticated() && (
+        isMainAdmin() ||
+        (hasScopedPermission('MANAGE_ATTENDANCE', request.resource.data.get('branch', '')) &&
+         hasBranchAccess(request.resource.data.get('branch', '')))
+      );
+      allow update: if isAuthenticated() && (
+        isMainAdmin() ||
+        (hasScopedPermission('MANAGE_ATTENDANCE', resource.data.get('branch', '')) &&
+         hasBranchAccess(resource.data.get('branch', '')))
+      );
+      allow delete: if isMainAdmin();
     }
   }
 }

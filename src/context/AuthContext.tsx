@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '../firebase/config';
-import { authService, type EmailCheckResult } from '../firebase/authService';
+import { authService, getLocalUsers, type EmailCheckResult } from '../firebase/authService';
 import { AuthContext } from './AuthContextDefinition';
 import type { UserRecord, UserRole, UserPermission } from '../types';
 
@@ -73,6 +73,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => unsubscribe();
   }, [loadProfile]);
+
+  // Section 13: Real-Time Updates — listen to Firestore doc and local changes
+  useEffect(() => {
+    let firestoreUnsub: (() => void) | null = null;
+    const activeUid = currentUser?.uid || userProfile?.uid;
+
+    if (isFirebaseConfigured && db && activeUid) {
+      try {
+        const userDocRef = doc(db, 'users', activeUid);
+        firestoreUnsub = onSnapshot(
+          userDocRef,
+          (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data() as UserRecord;
+              if (data.isActive) {
+                setUserProfile(data);
+                try {
+                  sessionStorage.setItem('campus_life_session', JSON.stringify(data));
+                } catch {
+                  // ignore
+                }
+              } else {
+                authService.signOut();
+                setCurrentUser(null);
+                setUserProfile(null);
+              }
+            }
+          },
+          (err) => {
+            console.warn('Realtime user profile listener error:', err);
+          }
+        );
+      } catch (err) {
+        console.warn('Failed to attach realtime profile listener:', err);
+      }
+    }
+
+    const handleStorageChange = () => {
+      if (userProfile?.email) {
+        const localUsers = getLocalUsers();
+        const found = localUsers.find((u) => u.email.toLowerCase() === userProfile.email.toLowerCase());
+        if (found) {
+          setUserProfile(found);
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      if (firestoreUnsub) firestoreUnsub();
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [currentUser?.uid, userProfile?.uid, userProfile?.email]);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);

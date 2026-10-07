@@ -85,7 +85,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header
-      className="app-header h-16 flex-shrink-0 z-30 flex items-center justify-between px-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80"
+      className="app-header"
       style={{
         height: '64px',
         flexShrink: 0,
@@ -107,7 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
           type="button"
           onClick={onToggleSidebar}
           aria-label="Toggle navigation menu"
-          className="header-hamburger-btn hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors lg:hidden"
+          className="header-hamburger-btn hide-on-desktop"
           style={{
             alignItems: 'center',
             justifyContent: 'center',

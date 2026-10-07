@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useId } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Users,
   Search,
@@ -13,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Settings2,
+  ShieldAlert,
 } from 'lucide-react';
 import { StatCard, Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -37,7 +39,11 @@ import { CustomFieldsRenderer } from '../../components/common/CustomFieldsRender
 import { FormFieldConfigModal } from '../../components/common/FormFieldConfigModal';
 import { AddCustomFieldModal } from '../../components/common/AddCustomFieldModal';
 import { DegreeBranchManagerModal } from '../../components/common/DegreeBranchManagerModal';
-import { hasPermission } from '../../services/permissionService';
+import {
+  canPerformAction,
+  getAccessibleBranches,
+  areBranchesEqual,
+} from '../../services/permissionService';
 import type {
   UserRecord,
   StudentCategory,
@@ -46,7 +52,7 @@ import type {
 } from '../../types';
 
 export const StudentManagementPage: React.FC = () => {
-  const { userProfile, role, permissions } = useAuth();
+  const { userProfile, role } = useAuth();
   const searchInputId = useId();
 
   // Data & Query States
@@ -188,7 +194,25 @@ export const StudentManagementPage: React.FC = () => {
     return () => unsub();
   }, []);
 
-  const canManageAcademic = hasPermission(role, permissions, 'MANAGE_STUDENTS');
+  const [searchParams] = useSearchParams();
+  const urlBranch = searchParams.get('branch');
+
+  // Compute all university branches & authorized branches for MANAGE_STUDENTS (view)
+  const allUniversityBranches = Array.from(new Set(degrees.flatMap((d) => d.branches || [])));
+  const accessibleBranches = role === 'MAIN_ADMIN'
+    ? allUniversityBranches
+    : getAccessibleBranches(userProfile, 'MANAGE_STUDENTS', 'view', allUniversityBranches);
+
+  const canManageAcademic =
+    role === 'MAIN_ADMIN' ||
+    canPerformAction(userProfile, 'MANAGE_STUDENTS', undefined, 'edit');
+
+  // Initialize branch filter with URL parameter if present
+  useEffect(() => {
+    if (urlBranch && urlBranch.trim() && urlBranch !== 'ALL') {
+      setBranchFilter(urlBranch.trim());
+    }
+  }, [urlBranch]);
 
   // Compute active degree branches and allowed years/semesters dynamically
   const activeDegree =
@@ -201,7 +225,9 @@ export const StudentManagementPage: React.FC = () => {
       createdAt: '',
       updatedAt: '',
     };
-  const currentBranches = activeDegree.branches || [];
+  const currentBranches = (activeDegree.branches || []).filter((b) =>
+    role === 'MAIN_ADMIN' || canPerformAction(userProfile, 'MANAGE_STUDENTS', b, 'add')
+  );
   const availableYears = getAvailableYears(activeDegree.durationYears);
   const availableSemesters = getAvailableSemesters(activeDegree.durationYears);
 
@@ -209,7 +235,9 @@ export const StudentManagementPage: React.FC = () => {
   const handleDegreeChange = (newDegreeName: string) => {
     const deg = degrees.find((d) => d.name === newDegreeName) || degrees[0];
     const duration = deg?.durationYears || 4;
-    const branches = deg?.branches || [];
+    const branches = (deg?.branches || []).filter((b) =>
+      role === 'MAIN_ADMIN' || canPerformAction(userProfile, 'MANAGE_STUDENTS', b, 'add')
+    );
     const maxSemesters = duration * 2;
 
     setFormData((prev) => ({
@@ -222,11 +250,17 @@ export const StudentManagementPage: React.FC = () => {
     }));
   };
 
-  // Fetch KPI statistics
+  // Fetch KPI statistics filtered by accessible branches
   const fetchStats = useCallback(async () => {
     try {
       const all = await userService.getAllUsers();
-      const studentUsers = all.filter((u) => u.role === 'STUDENT');
+      let studentUsers = all.filter((u) => u.role === 'STUDENT');
+      if (role !== 'MAIN_ADMIN') {
+        studentUsers = studentUsers.filter((u) => {
+          const b = u.branch || u.department;
+          return accessibleBranches.some((ab) => areBranchesEqual(ab, b));
+        });
+      }
       const hostelers = studentUsers.filter((u) => u.studentCategory === 'HOSTELER').length;
       const dayScholars = studentUsers.filter((u) => u.studentCategory === 'DAY_SCHOLAR').length;
       const inactive = studentUsers.filter((u) => !u.isActive).length;
@@ -240,9 +274,9 @@ export const StudentManagementPage: React.FC = () => {
     } catch (err) {
       console.warn('Failed to load student statistics:', err);
     }
-  }, []);
+  }, [role, accessibleBranches]);
 
-  // Fetch paginated student records
+  // Fetch paginated student records filtered strictly by authorized branches
   const loadStudents = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -253,6 +287,7 @@ export const StudentManagementPage: React.FC = () => {
         degree: departmentFilter === 'ALL' ? undefined : departmentFilter,
         department: departmentFilter === 'ALL' ? undefined : departmentFilter,
         branch: branchFilter === 'ALL' ? undefined : branchFilter,
+        authorizedBranches: role === 'MAIN_ADMIN' ? undefined : accessibleBranches,
         year: yearFilter === 'ALL' ? undefined : Number(yearFilter),
         studentCategory: categoryFilter === 'ALL' ? undefined : (categoryFilter as StudentCategory),
         status: statusFilter,
@@ -274,6 +309,8 @@ export const StudentManagementPage: React.FC = () => {
     searchQuery,
     departmentFilter,
     branchFilter,
+    role,
+    accessibleBranches,
     yearFilter,
     categoryFilter,
     statusFilter,
@@ -691,6 +728,57 @@ export const StudentManagementPage: React.FC = () => {
     }
   };
 
+  // Section 23: URL Branch Authorization Guard
+  const isUrlBranchUnauthorized = Boolean(
+    urlBranch &&
+      urlBranch.trim() &&
+      urlBranch !== 'ALL' &&
+      role !== 'MAIN_ADMIN' &&
+      !accessibleBranches.some((ab) => areBranchesEqual(ab, urlBranch))
+  );
+
+  const canAddStudent =
+    role === 'MAIN_ADMIN' ||
+    canPerformAction(
+      userProfile,
+      'MANAGE_STUDENTS',
+      branchFilter !== 'ALL' ? branchFilter : undefined,
+      'add'
+    );
+
+  if (isUrlBranchUnauthorized) {
+    return (
+      <div style={{ padding: '2.5rem 1.5rem', maxWidth: '560px', margin: '2rem auto', textAlign: 'center' }}>
+        <div className="card">
+          <div className="card-body" style={{ padding: '2rem' }}>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 'var(--radius-full)',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                color: 'var(--status-danger)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '1rem',
+              }}
+            >
+              <ShieldAlert size={30} />
+            </div>
+            <h2 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Branch Access Denied</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+              You don't have permission to access this branch ({urlBranch}).
+            </p>
+            <Button variant="primary" onClick={() => window.history.back()}>
+              Return
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%', maxWidth: '100%' }}>
       {/* Toast Notification */}
@@ -709,7 +797,7 @@ export const StudentManagementPage: React.FC = () => {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {canManageAcademic && (
+          {role === 'MAIN_ADMIN' && (
             <>
               <Button
                 variant="outline"
@@ -727,14 +815,16 @@ export const StudentManagementPage: React.FC = () => {
               </Button>
             </>
           )}
-          <Button
-            id="btn-add-student"
-            variant="primary"
-            leftIcon={<Plus size={16} />}
-            onClick={handleOpenAddModal}
-          >
-            Add Student
-          </Button>
+          {canAddStudent && (
+            <Button
+              id="btn-add-student"
+              variant="primary"
+              leftIcon={<Plus size={16} />}
+              onClick={handleOpenAddModal}
+            >
+              Add Student
+            </Button>
+          )}
         </div>
       </div>
 
@@ -881,11 +971,15 @@ export const StudentManagementPage: React.FC = () => {
                 }}
                 style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
               >
-                <option value="ALL">All Branches</option>
+                <option value="ALL">
+                  {role === 'MAIN_ADMIN' ? 'All Branches' : 'All Authorized Branches'}
+                </option>
                 {(
-                  departmentFilter !== 'ALL'
-                    ? degrees.find((d) => d.name === departmentFilter)?.branches || []
-                    : Array.from(new Set(degrees.flatMap((d) => d.branches || [])))
+                  role === 'MAIN_ADMIN'
+                    ? (departmentFilter !== 'ALL'
+                        ? degrees.find((d) => d.name === departmentFilter)?.branches || []
+                        : Array.from(new Set(degrees.flatMap((d) => d.branches || []))))
+                    : accessibleBranches
                 ).map((b) => (
                   <option key={b} value={b}>{b}</option>
                 ))}
@@ -1094,34 +1188,38 @@ export const StudentManagementPage: React.FC = () => {
                           >
                             <Eye size={15} />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`Edit ${stu.name}`}
-                            onClick={() => handleOpenEditModal(stu)}
-                          >
-                            <Edit2 size={15} />
-                          </Button>
-                          {stu.isActive ? (
+                          {(role === 'MAIN_ADMIN' || canPerformAction(userProfile, 'MANAGE_STUDENTS', stu.branch || stu.department, 'edit')) && (
                             <Button
                               variant="ghost"
                               size="sm"
-                              aria-label={`Deactivate ${stu.name}`}
-                              style={{ color: 'var(--color-danger)' }}
-                              onClick={() => handleOpenDeactivateModal(stu)}
+                              aria-label={`Edit ${stu.name}`}
+                              onClick={() => handleOpenEditModal(stu)}
                             >
-                              <UserX size={15} />
+                              <Edit2 size={15} />
                             </Button>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              aria-label={`Reactivate ${stu.name}`}
-                              style={{ color: 'var(--color-success)' }}
-                              onClick={() => handleOpenReactivateModal(stu)}
-                            >
-                              <UserCheck size={15} />
-                            </Button>
+                          )}
+                          {(role === 'MAIN_ADMIN' || canPerformAction(userProfile, 'MANAGE_STUDENTS', stu.branch || stu.department, 'delete')) && (
+                            stu.isActive ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`Deactivate ${stu.name}`}
+                                style={{ color: 'var(--color-danger)' }}
+                                onClick={() => handleOpenDeactivateModal(stu)}
+                              >
+                                <UserX size={15} />
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`Reactivate ${stu.name}`}
+                                style={{ color: 'var(--color-success)' }}
+                                onClick={() => handleOpenReactivateModal(stu)}
+                              >
+                                <UserCheck size={15} />
+                              </Button>
+                            )
                           )}
                         </div>
                       </td>
@@ -1190,29 +1288,33 @@ export const StudentManagementPage: React.FC = () => {
                     <Button variant="outline" size="sm" leftIcon={<Eye size={14} />} onClick={() => handleOpenViewModal(stu)}>
                       View
                     </Button>
-                    <Button variant="outline" size="sm" leftIcon={<Edit2 size={14} />} onClick={() => handleOpenEditModal(stu)}>
-                      Edit
-                    </Button>
-                    {stu.isActive ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
-                        leftIcon={<UserX size={14} />}
-                        onClick={() => handleOpenDeactivateModal(stu)}
-                      >
-                        Deactivate
+                    {(role === 'MAIN_ADMIN' || canPerformAction(userProfile, 'MANAGE_STUDENTS', stu.branch || stu.department, 'edit')) && (
+                      <Button variant="outline" size="sm" leftIcon={<Edit2 size={14} />} onClick={() => handleOpenEditModal(stu)}>
+                        Edit
                       </Button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        style={{ color: 'var(--color-success)', borderColor: 'var(--color-success)' }}
-                        leftIcon={<UserCheck size={14} />}
-                        onClick={() => handleOpenReactivateModal(stu)}
-                      >
-                        Reactivate
-                      </Button>
+                    )}
+                    {(role === 'MAIN_ADMIN' || canPerformAction(userProfile, 'MANAGE_STUDENTS', stu.branch || stu.department, 'delete')) && (
+                      stu.isActive ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
+                          leftIcon={<UserX size={14} />}
+                          onClick={() => handleOpenDeactivateModal(stu)}
+                        >
+                          Deactivate
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          style={{ color: 'var(--color-success)', borderColor: 'var(--color-success)' }}
+                          leftIcon={<UserCheck size={14} />}
+                          onClick={() => handleOpenReactivateModal(stu)}
+                        >
+                          Reactivate
+                        </Button>
+                      )
                     )}
                   </div>
                 </div>

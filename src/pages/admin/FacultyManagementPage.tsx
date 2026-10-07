@@ -858,10 +858,18 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
       const cleanDegree = isFaculty
         ? (primaryAssignment?.degreeName || formData.degree.trim() || undefined)
         : (primaryAssignment?.degreeName || undefined);
+      const cleanDept = isFaculty
+        ? (primaryAssignment?.degreeName || formData.degree.trim() || undefined)
+        : (formData.department ? formData.department.trim() : undefined);
       const cleanBranch = isFaculty
         ? (primaryAssignment?.branchName || (formData.branch ? formData.branch.trim() : undefined))
         : (primaryAssignment?.branchName || undefined);
-      const cleanDept = isFaculty ? (cleanDegree || '') : formData.department.trim();
+      const derivedAssignedBranches = Array.from(new Set([
+        ...assignments.map((a) => (a.branchName && a.branchName !== 'General' ? a.branchName : a.degreeName)),
+        ...(formData.specialSessionBranches || []),
+        cleanBranch,
+        cleanDegree,
+      ].filter((b): b is string => Boolean(b && b.trim()))));
 
       const res = await userService.createUser(
         {
@@ -873,6 +881,7 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
           department: cleanDept,
           designation: formData.designation.trim(),
           branch: cleanBranch,
+          assignedBranches: derivedAssignedBranches,
           degreeAssignments: assignments,
           specialSessionBranches: formData.specialSessionBranches || [],
           officeLocation: !isFaculty ? formData.officeLocation.trim() || undefined : undefined,
@@ -944,10 +953,18 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
       const cleanDegree = isFaculty
         ? (primaryAssignment?.degreeName || formData.degree.trim() || undefined)
         : (primaryAssignment?.degreeName || undefined);
+      const cleanDept = isFaculty
+        ? (primaryAssignment?.degreeName || formData.degree.trim() || undefined)
+        : (formData.department ? formData.department.trim() : undefined);
       const cleanBranch = isFaculty
         ? (primaryAssignment?.branchName || (formData.branch ? formData.branch.trim() : undefined))
         : (primaryAssignment?.branchName || undefined);
-      const cleanDept = isFaculty ? (cleanDegree || '') : formData.department.trim();
+      const derivedAssignedBranches = Array.from(new Set([
+        ...assignments.map((a) => (a.branchName && a.branchName !== 'General' ? a.branchName : a.degreeName)),
+        ...(formData.specialSessionBranches || []),
+        cleanBranch,
+        cleanDegree,
+      ].filter((b): b is string => Boolean(b && b.trim()))));
 
       const res = await userService.updateUser(
         selectedUser.uid,
@@ -958,6 +975,7 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
           department: cleanDept,
           designation: formData.designation.trim(),
           branch: cleanBranch,
+          assignedBranches: derivedAssignedBranches,
           degreeAssignments: assignments,
           specialSessionBranches: formData.specialSessionBranches || [],
           officeLocation: !isFaculty ? formData.officeLocation.trim() || undefined : undefined,
@@ -2253,6 +2271,10 @@ export const FacultyManagementPage: React.FC<FacultyManagementProps> = ({ initia
           setSelectedPermUser(null);
         }}
         targetUser={selectedPermUser}
+        onPermissionsUpdated={() => {
+          loadRecords();
+          fetchStats();
+        }}
         onSavePermissions={async (newPermissions) => {
           if (!selectedPermUser) return;
           const actor = {

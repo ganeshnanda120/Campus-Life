@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   updateDoc,
@@ -9,10 +10,16 @@ import {
   where,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../firebase/config';
-import { safeStorage } from '../firebase/authService';
+import { safeStorage, getLocalUsers } from '../firebase/authService';
 import { notificationService } from './notificationService';
 import { activityService } from './activityService';
 import { auditService } from './auditService';
+import {
+  getUserAssignedBranches,
+  areBranchesEqual,
+  canPerformAction,
+} from './permissionService';
+import { doesBranchMatch } from './degreeProgramService';
 import type {
   Complaint,
   ComplaintCategory,
@@ -21,6 +28,7 @@ import type {
   ComplaintTimelineStep,
   AttachmentFile,
   UserRole,
+  UserRecord,
 } from '../types';
 
 const COMPLAINTS_STORAGE_KEY = 'campus_life_complaints';
@@ -31,15 +39,17 @@ type ComplaintListener = {
     status?: string;
     category?: string;
     priority?: string;
+    branch?: string;
     searchQuery?: string;
   };
+  currentUser?: Partial<UserRecord> | null;
   callback: (complaints: Complaint[]) => void;
 };
 const activeComplaintListeners = new Set<ComplaintListener>();
 
 function notifyLocalComplaintListeners() {
   activeComplaintListeners.forEach((entry) => {
-    complaintService.getComplaints(entry.filters).then((data) => {
+    complaintService.getComplaints(entry.filters, entry.currentUser).then((data) => {
       entry.callback(data);
     }).catch(() => {});
   });
@@ -130,15 +140,116 @@ function saveLocalComplaints(complaints: Complaint[]) {
   }
 }
 
+/**
+ * Evaluates whether a target member (FACULTY, STAFF, or SUB_ADMIN)
+ * belongs to the authoritative branch and department/program scope of the student
+ * specifically for Complaint Box member tagging (Section 2, 5, 6, 7, 9, 10, 24, 25, 26, 27, 36).
+ */
+export function isMemberEligibleForStudentComplaint(
+  student: Partial<UserRecord> | null | undefined,
+  member: Partial<UserRecord> | null | undefined
+): boolean {
+  if (!student || !member) return false;
+  if (member.isActive === false) return false;
+
+  // 1. Members must have role FACULTY, STAFF, or SUB_ADMIN (Section 1, 27)
+  const allowedRoles: UserRole[] = ['FACULTY', 'STAFF', 'SUB_ADMIN'];
+  if (!member.role || !allowedRoles.includes(member.role)) {
+    return false;
+  }
+
+  // 2. Authoritative student branch
+  const studentBranch = (student.branch || student.department || '').trim();
+  if (!studentBranch) return false;
+
+  // 3. Member's assigned branches
+  const memberBranches = getUserAssignedBranches(member);
+  if (memberBranches.length === 0) return false;
+
+  // 4. Branch match: Member must be assigned to student's branch
+  const matchesBranch = memberBranches.some(
+    (b) =>
+      areBranchesEqual(b, studentBranch) ||
+      doesBranchMatch(b, member.department, studentBranch) ||
+      doesBranchMatch(member.branch, member.department, studentBranch)
+  );
+
+  if (!matchesBranch) return false;
+
+  // 5. Department & Program scope check (Section 9 & 10)
+  // For Faculty: if both student and faculty have distinct academic departments specified
+  if (member.role === 'FACULTY' && student.department && member.department) {
+    const sDept = student.department.trim().toLowerCase();
+    const mDept = member.department.trim().toLowerCase();
+
+    // If both have explicit non-empty departments
+    if (sDept && mDept && sDept !== mDept) {
+      // Check if departments are aliases of each other (e.g. "Computer Science" vs "Computer Science & Engineering")
+      const isAliasMatch =
+        doesBranchMatch(student.branch, student.department, member.department) ||
+        doesBranchMatch(member.branch, member.department, student.department);
+
+      if (!isAliasMatch) {
+        // Check if faculty has degree assignments covering student's department or branch
+        const hasCoveringAssignment = (member.degreeAssignments || []).some((da) => {
+          const daBranch = (da.branchName || '').toLowerCase();
+          const daDegree = (da.degreeName || '').toLowerCase();
+          return (
+            daBranch === sDept ||
+            daDegree === sDept ||
+            doesBranchMatch(daBranch, undefined, student.department) ||
+            areBranchesEqual(da.branchName, studentBranch)
+          );
+        });
+
+        if (!hasCoveringAssignment) {
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
 export const complaintService = {
-  async getComplaints(filters?: {
-    studentId?: string;
-    staffId?: string;
-    status?: string;
-    category?: string;
-    priority?: string;
-    searchQuery?: string;
-  }): Promise<Complaint[]> {
+  /**
+   * Retrieves all members (FACULTY, STAFF, SUB_ADMIN) eligible to be tagged
+   * in a complaint created by the student, filtered strictly to the student's authorized branch/scope.
+   */
+  async getEligibleTagMembers(student: Partial<UserRecord>): Promise<UserRecord[]> {
+    if (!student) return [];
+
+    let allUsers: UserRecord[] = [];
+    if (isFirebaseConfigured && db) {
+      try {
+        const snap = await getDocs(collection(db, 'users'));
+        if (!snap.empty) {
+          allUsers = snap.docs.map((d) => d.data() as UserRecord);
+        }
+      } catch (err) {
+        console.warn('Firestore getEligibleTagMembers fallback:', err);
+      }
+    }
+    if (allUsers.length === 0) {
+      allUsers = getLocalUsers();
+    }
+
+    return allUsers.filter((member) => isMemberEligibleForStudentComplaint(student, member));
+  },
+
+  async getComplaints(
+    filters?: {
+      studentId?: string;
+      staffId?: string;
+      status?: string;
+      category?: string;
+      priority?: string;
+      branch?: string;
+      searchQuery?: string;
+    },
+    currentUser?: Partial<UserRecord> | null
+  ): Promise<Complaint[]> {
     let list: Complaint[] = [];
 
     if (isFirebaseConfigured && db) {
@@ -174,6 +285,35 @@ export const complaintService = {
       };
     });
 
+    // Enforce branch isolation and member visibility (Section 15, 16, 17, 18)
+    if (currentUser) {
+      if (currentUser.role === 'STUDENT') {
+        list = list.filter((c) => c.studentId === currentUser.uid);
+      } else if (currentUser.role !== 'MAIN_ADMIN') {
+        const userBranches = getUserAssignedBranches(currentUser);
+        list = list.filter((c) => {
+          // 1. User is directly tagged or assigned
+          if (
+            (c.taggedUserIds && c.taggedUserIds.includes(currentUser.uid || '')) ||
+            c.assignedStaffId === currentUser.uid
+          ) {
+            return true;
+          }
+          // 2. Complaint is within user's assigned branch scope AND user has complaint permissions
+          const cBranch = c.branch;
+          if (!cBranch) return true;
+          const isAssignedBranch = userBranches.some((b) => areBranchesEqual(b, cBranch));
+          if (!isAssignedBranch) return false;
+
+          return (
+            canPerformAction(currentUser, 'MANAGE_COMPLAINTS', cBranch, 'view') ||
+            canPerformAction(currentUser, 'RESPOND_TO_COMPLAINTS', cBranch, 'view') ||
+            canPerformAction(currentUser, 'ASSIGN_COMPLAINTS', cBranch, 'view')
+          );
+        });
+      }
+    }
+
     if (filters) {
       if (filters.studentId) {
         list = list.filter((c) => c.studentId === filters.studentId);
@@ -190,6 +330,9 @@ export const complaintService = {
       if (filters.priority && filters.priority !== 'ALL') {
         list = list.filter((c) => c.priority === filters.priority);
       }
+      if (filters.branch && filters.branch !== 'ALL') {
+        list = list.filter((c) => areBranchesEqual(c.branch, filters.branch));
+      }
       if (filters.searchQuery) {
         const q = filters.searchQuery.toLowerCase();
         list = list.filter(
@@ -198,7 +341,8 @@ export const complaintService = {
             c.title.toLowerCase().includes(q) ||
             c.description.toLowerCase().includes(q) ||
             c.location.toLowerCase().includes(q) ||
-            c.category.toLowerCase().includes(q)
+            c.category.toLowerCase().includes(q) ||
+            (c.branch && c.branch.toLowerCase().includes(q))
         );
       }
     }
@@ -222,8 +366,105 @@ export const complaintService = {
     title: string;
     description: string;
     location: string;
+    branch?: string;
+    department?: string;
+    degree?: string;
+    taggedUserIds?: string[];
+    taggedUsers?: {
+      uid: string;
+      name: string;
+      role: UserRole;
+      email?: string;
+      branch?: string;
+      department?: string;
+    }[];
     attachments?: AttachmentFile[];
   }): Promise<Complaint> {
+    // 1. Authoritative Student Branch Verification (Section 8 & 21)
+    let studentUser: UserRecord | null = null;
+    if (isFirebaseConfigured && db) {
+      try {
+        const uDoc = await getDoc(doc(db, 'users', data.studentId));
+        if (uDoc.exists()) {
+          studentUser = uDoc.data() as UserRecord;
+        }
+      } catch (err) {
+        console.warn('Firestore load student for complaint fallback:', err);
+      }
+    }
+    if (!studentUser) {
+      studentUser = getLocalUsers().find((u) => u.uid === data.studentId) || null;
+    }
+
+    const authoritativeBranch = (
+      studentUser?.branch ||
+      studentUser?.department ||
+      data.branch ||
+      ''
+    ).trim();
+
+    if (!authoritativeBranch) {
+      throw new Error('Invalid complaint: Student profile has no assigned academic branch.');
+    }
+
+    // 2. Load all users to validate tagged members (Section 19, 20, 30)
+    let allUsers: UserRecord[] = [];
+    if (isFirebaseConfigured && db) {
+      try {
+        const uSnap = await getDocs(collection(db, 'users'));
+        if (!uSnap.empty) {
+          allUsers = uSnap.docs.map((d) => d.data() as UserRecord);
+        }
+      } catch (err) {
+        console.warn('Firestore load users for tagging validation fallback:', err);
+      }
+    }
+    if (allUsers.length === 0) {
+      allUsers = getLocalUsers();
+    }
+
+    const studentContext: Partial<UserRecord> = studentUser || {
+      uid: data.studentId,
+      branch: authoritativeBranch,
+      department: data.department,
+      degree: data.degree,
+      role: 'STUDENT',
+    };
+
+    const validatedTaggedUsers: {
+      uid: string;
+      name: string;
+      role: UserRole;
+      email?: string;
+      branch?: string;
+      department?: string;
+    }[] = [];
+
+    if (data.taggedUserIds && data.taggedUserIds.length > 0) {
+      for (const taggedId of data.taggedUserIds) {
+        const member = allUsers.find((u) => u.uid === taggedId);
+        if (!member) {
+          throw new Error('You cannot tag an unknown or invalid user.');
+        }
+
+        const isEligible = isMemberEligibleForStudentComplaint(studentContext, member);
+        if (!isEligible) {
+          throw new Error(
+            `You cannot tag a member outside your authorized branch (${authoritativeBranch}).`
+          );
+        }
+
+        validatedTaggedUsers.push({
+          uid: member.uid,
+          name: member.name,
+          role: member.role,
+          email: member.email,
+          branch: authoritativeBranch,
+          department: member.department,
+        });
+      }
+    }
+
     const serial = Math.floor(1000 + Math.random() * 9000);
     const complaintId = `CMP-${new Date().getFullYear()}-${serial}`;
     const id = `cmp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -242,7 +483,7 @@ export const complaintService = {
       actor: data.studentName,
       actorRole: 'STUDENT',
       action: 'Complaint Registered',
-      message: `Issue reported in ${data.category} under location: ${data.location}`,
+      message: `Issue reported in ${data.category} under location: ${data.location}. Scope: ${authoritativeBranch}`,
     };
 
     const newComplaint: Complaint = {
@@ -255,6 +496,12 @@ export const complaintService = {
       title: data.title.trim(),
       description: data.description.trim(),
       location: data.location.trim(),
+      branch: authoritativeBranch,
+      department: studentUser?.department || data.department || '',
+      degree: studentUser?.degree || data.degree || '',
+      creatorRole: 'STUDENT',
+      taggedUserIds: data.taggedUserIds || [],
+      taggedUsers: validatedTaggedUsers,
       priority,
       status: 'SUBMITTED',
       attachments: data.attachments || [],
@@ -279,14 +526,27 @@ export const complaintService = {
     saveLocalComplaints(localList);
     notifyLocalComplaintListeners();
 
-    // Notify student
+    // In-app notification for student
     await notificationService.createNotification({
       userId: data.studentId,
       title: 'Complaint Registered',
       message: `Your grievance #${complaintId} has been registered under ${data.category}.`,
       type: 'complaint',
-      link: '/student/complaints',
-    });
+      link: '/complaints',
+    }).catch(() => {});
+
+    // In-app notifications for tagged members (Section 33)
+    if (data.taggedUserIds && data.taggedUserIds.length > 0) {
+      for (const taggedId of data.taggedUserIds) {
+        notificationService.createNotification({
+          userId: taggedId,
+          title: 'Tagged in Complaint',
+          message: `You have been tagged in a complaint (#${complaintId}) from a ${authoritativeBranch} student.`,
+          type: 'complaint',
+          link: '/complaints',
+        }).catch(() => {});
+      }
+    }
 
     // Record activity
     await activityService.logActivity({
@@ -294,10 +554,10 @@ export const complaintService = {
       userName: data.studentName,
       userRole: 'STUDENT',
       activityType: 'COMPLAINT_SUBMITTED',
-      description: `Reported issue: ${data.title} (#${complaintId})`,
+      description: `Reported issue: ${data.title} (#${complaintId}) [${authoritativeBranch}]`,
       entityType: 'COMPLAINT',
       entityId: complaintId,
-    });
+    }).catch(() => {});
 
     // Audit log
     await auditService.logAction({
@@ -307,8 +567,8 @@ export const complaintService = {
       action: 'CREATE_COMPLAINT',
       entityType: 'COMPLAINT',
       entityId: complaintId,
-      changes: `Created complaint for ${data.category} at ${data.location}`,
-    });
+      changes: `Created complaint for ${data.category} at ${data.location} (${authoritativeBranch}) with ${validatedTaggedUsers.length} tagged members.`,
+    }).catch(() => {});
 
     return newComplaint;
   },
@@ -683,6 +943,89 @@ export const complaintService = {
     return updated;
   },
 
+  async respondToComplaint(
+    complaintId: string,
+    params: {
+      actorId: string;
+      actorName: string;
+      actorRole: UserRole;
+      message: string;
+      newStatus?: ComplaintStatus;
+      attachmentUrl?: string;
+      attachmentType?: 'image' | 'video' | 'pdf';
+    }
+  ): Promise<Complaint> {
+    const complaint = await this.getComplaintById(complaintId);
+    if (!complaint) throw new Error('Complaint not found.');
+
+    const now = new Date().toISOString();
+    const updatedStatus = params.newStatus || complaint.status;
+
+    let resolvedAt = complaint.resolvedAt;
+    let actualResolutionHours = complaint.actualResolutionHours;
+    if (updatedStatus === 'RESOLVED' && !resolvedAt) {
+      resolvedAt = now;
+      const hours = (new Date(now).getTime() - new Date(complaint.submittedAt).getTime()) / (1000 * 60 * 60);
+      actualResolutionHours = Number(hours.toFixed(1));
+    }
+
+    const step: ComplaintTimelineStep = {
+      id: `step_${Date.now()}`,
+      status: updatedStatus,
+      date: new Date().toLocaleDateString(),
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      actor: params.actorName,
+      actorRole: params.actorRole,
+      action: params.newStatus ? `Status updated to ${params.newStatus.replace('_', ' ')}` : 'Official Response Added',
+      message: params.message,
+      attachmentUrl: params.attachmentUrl,
+      attachmentType: params.attachmentType,
+    };
+
+    const updated: Complaint = {
+      ...complaint,
+      status: updatedStatus,
+      resolvedAt,
+      actualResolutionHours,
+      updatedAt: now,
+      timeline: [...complaint.timeline, step],
+    };
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const docRef = doc(db, 'complaints', complaint.id);
+        await updateDoc(docRef, {
+          status: updatedStatus,
+          resolvedAt: resolvedAt || null,
+          actualResolutionHours: actualResolutionHours || null,
+          updatedAt: now,
+          timeline: updated.timeline,
+        });
+      } catch (err) {
+        console.warn('Firestore response fallback:', err);
+      }
+    }
+
+    const localList = getLocalComplaints();
+    const idx = localList.findIndex((c) => c.id === complaint.id);
+    if (idx !== -1) {
+      localList[idx] = updated;
+      saveLocalComplaints(localList);
+    }
+    notifyLocalComplaintListeners();
+
+    // Notify student
+    await notificationService.createNotification({
+      userId: complaint.studentId,
+      title: `Response on Complaint #${complaint.complaintId}`,
+      message: `${params.actorName} (${params.actorRole}) responded: "${params.message}"`,
+      type: 'complaint',
+      link: '/complaints',
+    }).catch(() => {});
+
+    return updated;
+  },
+
   subscribeComplaints(
     filters?: {
       studentId?: string;
@@ -690,16 +1033,18 @@ export const complaintService = {
       status?: string;
       category?: string;
       priority?: string;
+      branch?: string;
       searchQuery?: string;
     },
-    callback?: (complaints: Complaint[]) => void
+    callback?: (complaints: Complaint[]) => void,
+    currentUser?: Partial<UserRecord> | null
   ): () => void {
     if (!callback) return () => {};
-    const listenerEntry = { filters, callback };
+    const listenerEntry = { filters, currentUser, callback };
     activeComplaintListeners.add(listenerEntry);
 
     // Initial immediate invocation
-    this.getComplaints(filters).then(callback).catch(() => {});
+    this.getComplaints(filters, currentUser).then(callback).catch(() => {});
 
     let unsubscribeFirestore: (() => void) | null = null;
     if (isFirebaseConfigured && db) {
@@ -715,7 +1060,7 @@ export const complaintService = {
         unsubscribeFirestore = onSnapshot(
           q,
           () => {
-            this.getComplaints(filters).then(callback).catch(() => {});
+            this.getComplaints(filters, currentUser).then(callback).catch(() => {});
           },
           (err) => {
             console.warn('Firestore complaints subscription warning:', err);

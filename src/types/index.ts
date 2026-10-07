@@ -32,7 +32,37 @@ export type UserPermission =
   | 'VIEW_ANALYTICS'
   | 'VIEW_REPORTS'
   | 'VIEW_AUDIT_LOGS'
-  | 'MANAGE_SETTINGS';
+  | 'MANAGE_SETTINGS'
+  | 'CAN_GRANT_PERMISSIONS';
+
+export type PermissionScopeType = 'ALL_ASSIGNED_BRANCHES' | 'SELECTED_BRANCHES';
+
+export type PermissionAction =
+  | 'view'
+  | 'add'
+  | 'edit'
+  | 'delete'
+  | 'create'
+  | 'approve'
+  | 'reject'
+  | 'assign'
+  | 'update'
+  | 'resolve'
+  | 'assign_students'
+  | 'remove_students'
+  | 'export'
+  | 'grant'
+  | 'revoke'
+  | 'take_attendance'
+  | 'edit_attendance'
+  | 'view_reports';
+
+export interface ScopedPermission {
+  permissionId: string;
+  actions: string[];
+  scopeType: PermissionScopeType;
+  branchIds: string[];
+}
 
 export interface AcademicDegreeAssignment {
   degreeId?: string;
@@ -50,16 +80,19 @@ export interface UserRecord {
   department?: string;
   degree?: string;
   branch?: string;
+  assignedBranches?: string[];
   degreeAssignments?: AcademicDegreeAssignment[];
   specialSessionBranches?: string[];
   year?: number;
   semester?: number;
+  section?: string;
   studentId?: string;
   rollNumber?: string;
   studentCategory?: StudentCategory;
   gender?: string;
   designation?: string;
   permissions?: UserPermission[];
+  scopedPermissions?: ScopedPermission[];
   hostelName?: string;
   hostelBlock?: string;
   roomNumber?: string;
@@ -250,6 +283,20 @@ export interface Complaint {
   escalatedBy?: string;
   escalationReason?: string;
   slaStatus?: 'WITHIN_SLA' | 'DUE_SOON' | 'OVERDUE';
+  // Branch-Scoped Complaint Box fields (Section 13)
+  branch?: string;
+  department?: string;
+  degree?: string;
+  creatorRole?: UserRole;
+  taggedUserIds?: string[];
+  taggedUsers?: {
+    uid: string;
+    name: string;
+    role: UserRole;
+    email?: string;
+    branch?: string;
+    department?: string;
+  }[];
 }
 
 export type GatePassStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED' | 'USED';
@@ -476,15 +523,47 @@ export interface AuditLog {
   ipAddress?: string;
 }
 
+export interface AttendanceSession {
+  id: string;
+  date: string; // YYYY-MM-DD
+  branch: string;
+  department: string;
+  degree: string;
+  year?: number;
+  semester: number;
+  section: string;
+  subjectCode: string;
+  subjectName: string;
+  period: string; // e.g. 'Period 1'
+  facultyUid: string;
+  facultyName: string;
+  totalStudents: number;
+  presentCount: number;
+  absentCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AttendanceRecord {
   id: string;
+  sessionId?: string;
   studentId: string;
   studentName: string;
+  branch?: string;
+  department?: string;
+  degree?: string;
+  year?: number;
+  semester?: number;
+  section?: string;
   subjectCode: string;
   subjectName: string;
   facultyName: string;
+  facultyUid?: string;
   date: string;
+  period?: string;
   status: 'PRESENT' | 'ABSENT';
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AttendanceSubject {

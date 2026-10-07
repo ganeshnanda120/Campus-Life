@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import type { UserRole, UserPermission } from '../../types';
 import { useAuth } from '../../context/useAuth';
-import { hasPermission } from '../../services/permissionService';
+import { getAccessibleBranches } from '../../services/permissionService';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -52,9 +52,90 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onClose,
   userRole = 'MAIN_ADMIN',
 }) => {
-  const { role: authRole, permissions: authPermissions } = useAuth();
+  const { role: authRole, userProfile } = useAuth();
   const effectiveRole = authRole || userRole;
-  const effectivePermissions = authPermissions || [];
+
+  const isItemVisible = (item: NavItemConfig): boolean => {
+    if (effectiveRole === 'MAIN_ADMIN') return true;
+
+    if (effectiveRole === 'STUDENT') {
+      if (item.roles && !item.roles.includes('STUDENT')) return false;
+      if (item.to.startsWith('/admin')) return false;
+      return true;
+    }
+
+    // For SUB_ADMIN, FACULTY, and STAFF:
+    // Route-level permission & branch check (Sections 9, 10, 20)
+    switch (item.to) {
+      case '/dashboard':
+      case '/id-card':
+      case '/service-directory':
+      case '/calendar':
+      case '/lost-found':
+      case '/polls':
+      case '/help':
+        return true;
+      case '/student/requests':
+      case '/requests':
+        return (
+          getAccessibleBranches(userProfile, 'APPROVE_REQUESTS').length > 0 ||
+          getAccessibleBranches(userProfile, 'MANAGE_REQUESTS').length > 0 ||
+          getAccessibleBranches(userProfile, 'MANAGE_CERTIFICATES').length > 0
+        );
+      case '/student/complaints':
+      case '/complaints':
+        return (
+          getAccessibleBranches(userProfile, 'MANAGE_COMPLAINTS').length > 0 ||
+          getAccessibleBranches(userProfile, 'ASSIGN_COMPLAINTS').length > 0 ||
+          getAccessibleBranches(userProfile, 'RESPOND_TO_COMPLAINTS').length > 0
+        );
+      case '/student/gate-pass':
+      case '/gate-pass':
+        return (
+          getAccessibleBranches(userProfile, 'MANAGE_GATE_PASS').length > 0 ||
+          getAccessibleBranches(userProfile, 'APPROVE_GATE_PASS').length > 0
+        );
+      case '/student/attendance':
+      case '/attendance':
+        return getAccessibleBranches(userProfile, 'MANAGE_ATTENDANCE').length > 0;
+      case '/student/timetable':
+      case '/timetable':
+        return getAccessibleBranches(userProfile, 'MANAGE_TIMETABLE').length > 0;
+      case '/student/hostel':
+      case '/hostel':
+        return getAccessibleBranches(userProfile, 'MANAGE_HOSTEL').length > 0;
+      case '/student/mess':
+      case '/mess':
+        return getAccessibleBranches(userProfile, 'MANAGE_MESS').length > 0;
+      case '/notices':
+        return getAccessibleBranches(userProfile, 'MANAGE_NOTICES').length > 0;
+      case '/admin/students':
+        return getAccessibleBranches(userProfile, 'MANAGE_STUDENTS').length > 0;
+      case '/admin/faculty':
+      case '/admin/staff':
+        return (
+          getAccessibleBranches(userProfile, 'MANAGE_FACULTY').length > 0 ||
+          getAccessibleBranches(userProfile, 'MANAGE_STAFF').length > 0
+        );
+      case '/admin/sub-admins':
+        return (
+          getAccessibleBranches(userProfile, 'MANAGE_SUB_ADMINS').length > 0 ||
+          getAccessibleBranches(userProfile, 'CAN_GRANT_PERMISSIONS').length > 0
+        );
+      case '/admin/reports':
+        return (
+          getAccessibleBranches(userProfile, 'VIEW_REPORTS').length > 0 ||
+          getAccessibleBranches(userProfile, 'VIEW_ANALYTICS').length > 0
+        );
+      case '/admin/audit-logs':
+        return getAccessibleBranches(userProfile, 'VIEW_AUDIT_LOGS').length > 0;
+      default:
+        if (item.permission) {
+          return getAccessibleBranches(userProfile, item.permission).length > 0;
+        }
+        return true;
+    }
+  };
 
   const navGroups: NavGroupConfig[] = [
     {
@@ -133,14 +214,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <nav className="sidebar-nav flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300">
           {navGroups.map((group) => {
-            const visibleItems = group.items.filter((item) => {
-              if (item.permission) {
-                if (effectiveRole === 'MAIN_ADMIN') return true;
-                return hasPermission(effectiveRole, effectivePermissions, item.permission);
-              }
-              if (!item.roles) return true;
-              return item.roles.includes(effectiveRole);
-            });
+            const visibleItems = group.items.filter((item) => isItemVisible(item));
 
             if (visibleItems.length === 0) return null;
 

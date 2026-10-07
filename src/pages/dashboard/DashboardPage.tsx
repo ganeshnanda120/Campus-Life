@@ -20,6 +20,7 @@ import {
   HelpCircle,
   UserCheck,
   Key,
+  Plus,
 } from 'lucide-react';
 import { StatCard, Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -35,7 +36,12 @@ import { noticeService } from '../../services/noticeService';
 import { calendarService } from '../../services/calendarService';
 import { pollService } from '../../services/pollService';
 import { activityService } from '../../services/activityService';
-import { ALL_PERMISSIONS } from '../../services/permissionService';
+import {
+  ALL_PERMISSIONS,
+  getUserAssignedBranches,
+  getAuthorizedBranchModules,
+  canPerformAction,
+} from '../../services/permissionService';
 import { PermissionCatalogModal } from '../../components/common/PermissionCatalogModal';
 import type {
   TimetableEntry,
@@ -49,7 +55,7 @@ import type {
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { userProfile, role } = useAuth();
+  const { userProfile, role, isLoading: authLoading } = useAuth();
   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
 
   // Admin stats
@@ -129,6 +135,17 @@ export const DashboardPage: React.FC = () => {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
+  // Section 19 & 36: Real-time listener for student attendance so KPI card updates instantly
+  useEffect(() => {
+    if (role === 'STUDENT') {
+      const studentId = userProfile?.studentId || 'STU2026001';
+      const unsubscribe = attendanceService.subscribeStudentAttendance(studentId, (data) => {
+        setAttendance(data);
+      });
+      return () => unsubscribe();
+    }
+  }, [role, userProfile]);
+
   // Handle emergency notice acknowledgement from dashboard
   const handleAcknowledgeEmergency = async (noticeId: string) => {
     if (!userProfile) return;
@@ -143,6 +160,27 @@ export const DashboardPage: React.FC = () => {
       console.error('Failed to acknowledge emergency notice:', err);
     }
   };
+
+  // Section 30 & 31: Fail-closed loading state — prevents premature display of unauthorized content
+  if (authLoading || (isLoading && !userProfile)) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '60vh',
+          gap: '1rem',
+        }}
+      >
+        <div className="spinner" style={{ width: 40, height: 40 }} />
+        <span style={{ fontSize: '0.95rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+          Loading permissions...
+        </span>
+      </div>
+    );
+  }
 
   // ===========================================================================
   // STUDENT DASHBOARD VIEW
@@ -244,18 +282,45 @@ export const DashboardPage: React.FC = () => {
 
         {/* Top Operational KPI Cards */}
         <div className="grid-cards">
-          {/* Attendance Card */}
-          <StatCard
-            label="Overall Attendance"
-            value={attendance ? `${attendance.overallPercentage}%` : '84.2%'}
-            subtitle={
-              <Badge variant={attendance?.isEligible ? 'success' : 'danger'}>
-                {attendance?.isEligible ? 'Eligible for Exams (>=75%)' : 'Shortage Alert (<75%)'}
-              </Badge>
-            }
-            icon={<CalendarCheck size={22} />}
+          {/* Section 20 & 46: Main Student Dashboard Attendance Card */}
+          <Card
             onClick={() => navigate('/student/attendance')}
-          />
+            style={{
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              padding: '1.25rem',
+              transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Attendance
+                </span>
+                <CalendarCheck size={20} style={{ color: 'var(--brand-primary)' }} />
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Overall Attendance
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 700, margin: '0.2rem 0', color: 'var(--text-primary)' }}>
+                {attendance ? `${attendance.overallPercentage}%` : '0%'}
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.825rem', color: 'var(--text-secondary)', marginTop: '0.35rem' }}>
+                <span>Present: <strong style={{ color: 'var(--status-success)' }}>{attendance?.attendedClasses ?? 0}</strong></span>
+                <span>Conducted: <strong>{attendance?.totalClasses ?? 0}</strong></span>
+              </div>
+            </div>
+            <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-subtle)', paddingTop: '0.5rem' }}>
+              <Badge variant={attendance?.isEligible ? 'success' : 'danger'}>
+                {attendance?.isEligible ? 'Eligible (>=75%)' : 'Shortage (<75%)'}
+              </Badge>
+              <span style={{ fontSize: '0.8rem', color: 'var(--brand-primary)', fontWeight: 600 }}>
+                View Details &rarr;
+              </span>
+            </div>
+          </Card>
 
           {/* Today's Classes Card */}
           <StatCard
@@ -776,7 +841,347 @@ export const DashboardPage: React.FC = () => {
   }
 
   // ===========================================================================
-  // ADMIN & OPERATIONAL OVERVIEW DASHBOARD
+  // SUB_ADMIN, FACULTY, STAFF BRANCH-SCOPED OPERATIONAL DASHBOARD
+  // ===========================================================================
+  if (role === 'SUB_ADMIN' || role === 'FACULTY' || role === 'STAFF') {
+    const assignedBranches = getUserAssignedBranches(userProfile);
+    const authorizedModulesByBranch = getAuthorizedBranchModules(userProfile);
+    const branchNamesWithModules = Object.keys(authorizedModulesByBranch);
+    const canDelegate =
+      canPerformAction(userProfile, 'grant_permissions') ||
+      canPerformAction(userProfile, 'CAN_GRANT_PERMISSIONS');
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%', maxWidth: '100%' }}>
+        {/* User Dossier & Branch Scope Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+              <h1 style={{ margin: 0, fontSize: '1.6rem' }}>
+                {userProfile?.name || 'Staff Member'}
+              </h1>
+              <Badge variant={role === 'SUB_ADMIN' ? 'warning' : 'info'}>
+                {role}
+              </Badge>
+              {canDelegate && (
+                <Badge variant="success">Can Grant Permissions</Badge>
+              )}
+            </div>
+            <p style={{ margin: '0.35rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              {userProfile?.email} • {userProfile?.designation || userProfile?.department || 'Operations'}
+              {userProfile?.employeeId && ` • ID: ${userProfile.employeeId}`}
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<RefreshCw size={14} className={isLoading ? 'spin' : ''} />}
+              onClick={fetchDashboardData}
+            >
+              Refresh
+            </Button>
+            {canDelegate && (
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<ShieldAlert size={14} />}
+                onClick={() => navigate('/admin/sub-admins')}
+              >
+                Delegate Permissions
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Assigned Branches Operational Scope Banner */}
+        <div
+          className="card"
+          style={{
+            padding: '1rem 1.25rem',
+            backgroundColor: 'var(--bg-surface)',
+            borderLeft: '4px solid var(--brand-primary)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div>
+              <div style={{ fontSize: '0.78rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+                Assigned Operational Branches ({assignedBranches.length})
+              </div>
+              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+                {assignedBranches.length === 0 ? (
+                  <span style={{ fontSize: '0.85rem', color: 'var(--status-danger)', fontWeight: 500 }}>
+                    ⚠️ No branches assigned to your account. Please contact the Main Administrator.
+                  </span>
+                ) : (
+                  assignedBranches.map((b) => (
+                    <Badge key={b} variant="neutral" style={{ fontSize: '0.82rem', padding: '0.25rem 0.6rem' }}>
+                      🏛️ {b}
+                    </Badge>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              Active Operational Branches: <strong>{branchNamesWithModules.length}</strong> / {assignedBranches.length}
+            </div>
+          </div>
+        </div>
+
+        {/* Emergency Notices broadcast banner if active */}
+        {emergencyNotices.length > 0 && (
+          <div
+            className="card"
+            style={{
+              borderLeft: '6px solid var(--status-danger)',
+              backgroundColor: 'var(--bg-surface-elevated)',
+              padding: '1rem 1.25rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <AlertTriangle size={24} style={{ color: 'var(--status-danger)' }} />
+                <div>
+                  <h4 style={{ margin: 0, color: 'var(--status-danger)', fontSize: '0.98rem' }}>
+                    CAMPUS EMERGENCY BROADCAST
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    {emergencyNotices[0].title}
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => navigate('/notices')}>
+                View Notice
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Section 10: Dynamic Branch Sections (Hiding branches without permissions) */}
+        {branchNamesWithModules.length === 0 ? (
+          <div
+            className="card"
+            style={{
+              padding: '3rem 2rem',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '1rem',
+            }}
+          >
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: '50%',
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                color: 'var(--brand-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Building size={30} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>No Operational Modules Granted</h3>
+              <p style={{ margin: '0.45rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '520px', lineHeight: 1.5 }}>
+                You are assigned to {assignedBranches.join(', ') || 'no branches'}, but no permission
+                scopes have been configured for those branches yet. Modules and actions will appear here in real time
+                once granted by the Administrator.
+              </p>
+            </div>
+          </div>
+        ) : (
+          branchNamesWithModules.map((branchName) => {
+            const modules = authorizedModulesByBranch[branchName] || [];
+
+            return (
+              <div
+                key={branchName}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1rem',
+                  backgroundColor: 'var(--bg-surface)',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--radius-lg, 12px)',
+                  padding: '1.25rem',
+                }}
+              >
+                {/* Branch Header */}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    borderBottom: '1px solid var(--border-subtle)',
+                    paddingBottom: '0.75rem',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <div
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 'var(--radius-md)',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        color: 'var(--brand-primary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '1rem',
+                      }}
+                    >
+                      🏛️
+                    </div>
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>
+                        {branchName}
+                      </h2>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        {modules.length} operational {modules.length === 1 ? 'module' : 'modules'} active
+                      </span>
+                    </div>
+                  </div>
+
+                  <Badge variant="info">
+                    Authorized Scope
+                  </Badge>
+                </div>
+
+                {/* Section 9: Modules & Action-Level Buttons Grid */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                    gap: '1rem',
+                  }}
+                >
+                  {modules.map(({ definition, actions }) => {
+                    const hasView = actions.includes('view');
+                    const hasAdd = actions.includes('add') || actions.includes('create');
+                    const hasEdit = actions.includes('edit') || actions.includes('update');
+                    const hasDelete = actions.includes('delete');
+                    const hasApprove = actions.includes('approve');
+                    const route = definition.route || '/dashboard';
+                    const branchParam = `branch=${encodeURIComponent(branchName)}`;
+                    const targetUrl = route.includes('?') ? `${route}&${branchParam}` : `${route}?${branchParam}`;
+
+                    return (
+                      <div
+                        key={definition.key}
+                        style={{
+                          padding: '1.15rem',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--border-default)',
+                          backgroundColor: 'var(--bg-subtle)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          gap: '0.9rem',
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>
+                              {definition.label}
+                            </h3>
+                            <Badge variant="neutral" style={{ fontSize: '0.7rem' }}>
+                              {definition.category}
+                            </Badge>
+                          </div>
+                          <p style={{ margin: '0.35rem 0 0.75rem 0', fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                            {definition.description}
+                          </p>
+
+                          {/* Action badges */}
+                          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                            {actions.map((act) => (
+                              <Badge key={act} variant="success" style={{ fontSize: '0.68rem', textTransform: 'uppercase' }}>
+                                {act}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Section 9: Direct action buttons (Only granted actions shown) */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '0.5rem',
+                            flexWrap: 'wrap',
+                            borderTop: '1px solid var(--border-subtle)',
+                            paddingTop: '0.75rem',
+                          }}
+                        >
+                          {hasView && (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => navigate(targetUrl)}
+                              style={{ flex: 1, minWidth: '90px' }}
+                            >
+                              View
+                            </Button>
+                          )}
+
+                          {hasAdd && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              leftIcon={<Plus size={13} />}
+                              onClick={() => navigate(`${targetUrl}&action=add`)}
+                            >
+                              Add
+                            </Button>
+                          )}
+
+                          {hasEdit && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate(targetUrl)}
+                            >
+                              Edit
+                            </Button>
+                          )}
+
+                          {hasApprove && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate(targetUrl)}
+                            >
+                              Approve
+                            </Button>
+                          )}
+
+                          {hasDelete && (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--status-danger)', alignSelf: 'center', fontWeight: 600 }}>
+                              Delete Allowed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  }
+
+  // ===========================================================================
+  // MAIN_ADMIN CAMPUS OPERATIONS OVERVIEW
   // ===========================================================================
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%', maxWidth: '100%' }}>

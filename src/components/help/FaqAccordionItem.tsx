@@ -48,49 +48,48 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
 
   return (
     <div
-      className="bg-white rounded-xl border border-slate-200 shadow-sm mb-3 overflow-hidden transition-all duration-200 hover:border-slate-300"
+      className="card"
       style={{
         backgroundColor: 'var(--bg-surface, #ffffff)',
-        borderRadius: '0.75rem',
+        borderRadius: 'var(--radius-md, 0.75rem)',
         border: '1px solid var(--border-default, #e2e8f0)',
-        boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        boxShadow: 'var(--shadow-xs)',
         marginBottom: '0.75rem',
         overflow: 'hidden',
-        transition: 'all 0.2s ease',
+        transition: 'border-color 0.2s ease',
+        padding: 0,
       }}
     >
-      {/* 2. Header Container with clean spacing to prevent text collision */}
+      {/* Header Container with clean spacing to prevent text collision */}
       <div
         onClick={onToggle}
-        className="flex items-center justify-between p-4 sm:px-5 sm:py-4 cursor-pointer select-none"
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '1.25rem 1.5rem',
+          padding: '1.15rem 1.35rem',
           cursor: 'pointer',
           userSelect: 'none',
         }}
       >
         {/* Horizontal flexbox with clean gap: Category badge + Question */}
         <div
-          className="flex items-center gap-3 sm:gap-4 flex-1 pr-4"
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '1rem',
+            gap: '0.75rem',
             flex: 1,
             paddingRight: '1rem',
             minWidth: 0,
+            flexWrap: 'wrap',
           }}
         >
           {/* Category Badge Pill with distinct breathing room */}
           <span
-            className="shrink-0 px-2.5 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-700 border border-slate-200"
             style={{
               flexShrink: 0,
-              padding: '0.3rem 0.75rem',
-              fontSize: '0.78rem',
+              padding: '0.25rem 0.65rem',
+              fontSize: '0.75rem',
               fontWeight: 600,
               borderRadius: '9999px',
               backgroundColor: 'var(--bg-subtle, #f1f5f9)',
@@ -105,9 +104,8 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
 
           {/* Question Text */}
           <h3
-            className="text-sm sm:text-base font-semibold text-slate-800 leading-snug m-0"
             style={{
-              fontSize: '0.975rem',
+              fontSize: '0.95rem',
               fontWeight: 600,
               color: 'var(--text-primary, #1e293b)',
               lineHeight: 1.45,
@@ -120,7 +118,6 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
 
         {/* Chevron Icon with 180° rotation on expansion */}
         <div
-          className="text-slate-400 shrink-0 transition-transform duration-200"
           style={{
             color: 'var(--text-muted, #94a3b8)',
             flexShrink: 0,
@@ -135,22 +132,20 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
         </div>
       </div>
 
-      {/* 3. Clean Expanded Answer View */}
+      {/* Clean Expanded Answer View */}
       {isOpen && (
         <div
-          className="border-t border-slate-100 px-5 pt-3 pb-4 bg-slate-50/50"
           style={{
             borderTop: '1px solid var(--border-subtle, #f1f5f9)',
-            padding: '1.25rem 1.5rem',
-            backgroundColor: 'var(--bg-canvas, rgba(248, 250, 252, 0.5))',
+            padding: '1.15rem 1.35rem',
+            backgroundColor: 'var(--bg-subtle, #f8fafc)',
           }}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Step-by-step SOP Answer Body */}
           <p
-            className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-3"
             style={{
-              fontSize: '0.9rem',
+              fontSize: '0.88rem',
               color: 'var(--text-secondary, #475569)',
               lineHeight: 1.65,
               margin: '0 0 1rem 0',
@@ -161,7 +156,6 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
 
           {/* Footer Actions Row */}
           <div
-            className="flex items-center justify-between pt-2 border-t border-slate-100/80"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -169,40 +163,39 @@ export const FaqAccordionItem: React.FC<FaqAccordionItemProps> = ({
               paddingTop: '0.75rem',
               borderTop: '1px solid var(--border-subtle, rgba(241, 245, 249, 0.8))',
               gap: '0.75rem',
+              flexWrap: 'wrap',
             }}
           >
             {/* Left: Quick Portal Action Link */}
             {quickAction ? (
               <Link
                 to={quickAction.to}
-                className="text-blue-600 hover:text-blue-700 text-xs font-medium inline-flex items-center gap-1"
                 style={{
                   color: 'var(--brand-primary, #2563eb)',
                   fontSize: '0.78rem',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.25rem',
                   textDecoration: 'none',
                 }}
               >
-                <span>{quickAction.label} →</span>
+                <span>{quickAction.label} &rarr;</span>
               </Link>
             ) : (
               <div />
             )}
 
-            {/* Right: Neat Ghost Button for Real Helpful Feedback */}
+            {/* Right: Helpful feedback button */}
             <button
               type="button"
               onClick={(e) => onMarkHelpful(faq.id, e)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-slate-500 hover:text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 transition-colors"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.375rem',
                 padding: '0.25rem 0.625rem',
-                borderRadius: '0.375rem',
+                borderRadius: 'var(--radius-sm)',
                 fontSize: '0.75rem',
                 color: isHelpful ? 'var(--brand-primary, #1d4ed8)' : 'var(--text-muted, #64748b)',
                 backgroundColor: isHelpful ? 'var(--brand-primary-light, #eff6ff)' : 'transparent',

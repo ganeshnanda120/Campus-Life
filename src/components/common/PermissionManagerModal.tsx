@@ -2,27 +2,41 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Search,
   Shield,
-  Check,
   X,
-  Layers,
-  CheckSquare,
-  Square,
+  Plus,
+  Edit2,
+  Trash2,
+  Building,
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { Button } from './Button';
+import { Alert } from './Alert';
+import { GrantPermissionModal } from './GrantPermissionModal';
+import { useAuth } from '../../context/useAuth';
+import { userService } from '../../services/userService';
 import {
   ALL_PERMISSIONS,
   PERMISSION_CATEGORIES,
-  type PermissionDefinition,
+  getUserAssignedBranches,
+  getEffectiveScopedPermissions,
+  canPerformAction,
+  areBranchesEqual,
+  canUserDelegatePermission,
 } from '../../services/permissionService';
-import type { UserRecord, UserPermission } from '../../types';
+import { degreeProgramService } from '../../services/degreeProgramService';
+import type {
+  UserRecord,
+  UserPermission,
+  ScopedPermission,
+} from '../../types';
 
 interface PermissionManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
   targetUser: UserRecord | null;
-  onSavePermissions: (newPermissions: UserPermission[]) => Promise<boolean | void>;
+  onSavePermissions?: (newPermissions: UserPermission[]) => Promise<boolean | void>;
+  onPermissionsUpdated?: () => void;
 }
 
 export const PermissionManagerModal: React.FC<PermissionManagerModalProps> = ({
@@ -30,645 +44,875 @@ export const PermissionManagerModal: React.FC<PermissionManagerModalProps> = ({
   onClose,
   targetUser,
   onSavePermissions,
+  onPermissionsUpdated,
 }) => {
-  const [selectedPermissions, setSelectedPermissions] = useState<UserPermission[]>([]);
+  const { userProfile: currentUserProfile, role: currentRole } = useAuth();
+
+  // Local working copy of target user and permissions
+  const [activeUser, setActiveUser] = useState<UserRecord | null>(targetUser);
+  const [assignedBranches, setAssignedBranches] = useState<string[]>([]);
+  const [scopedPermissions, setScopedPermissions] = useState<ScopedPermission[]>([]);
+
+  // Filtering states
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ASSIGNED' | 'UNASSIGNED'>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [branchFilter, setBranchFilter] = useState<string>('ALL');
+
+  // Branch management sub-state
+  const [isBranchEditorOpen, setIsBranchEditorOpen] = useState(false);
+  const [availableSystemBranches, setAvailableSystemBranches] = useState<string[]>([]);
+  const [newBranchInput, setNewBranchInput] = useState('');
+
+  // Grant modal sub-state
+  const [isGrantModalOpen, setIsGrantModalOpen] = useState(false);
+  const [permissionToEdit, setPermissionToEdit] = useState<ScopedPermission | null>(null);
+
+  // Status states
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Sync state when target user changes or modal opens
+  // Load available system branches from degree programs
   useEffect(() => {
-    if (targetUser) {
-      setSelectedPermissions(targetUser.permissions || []);
+    degreeProgramService
+      .getDegrees()
+      .then((degrees) => {
+        const branches = new Set<string>(['BCA', 'B.Tech', 'MCA', 'MBA']);
+        degrees.forEach((d) => {
+          if (d.name) branches.add(d.name);
+          (d.branches || []).forEach((b) => branches.add(b));
+        });
+        setAvailableSystemBranches(Array.from(branches));
+      })
+      .catch(() => {
+        setAvailableSystemBranches(['BCA', 'B.Tech', 'MCA', 'MBA']);
+      });
+  }, []);
+
+  // Sync state whenever targetUser or modal open state changes
+  useEffect(() => {
+    if (targetUser && isOpen) {
+      setActiveUser(targetUser);
+      const branches = getUserAssignedBranches(targetUser);
+      setAssignedBranches(branches);
+
+      const effective = getEffectiveScopedPermissions(targetUser);
+      setScopedPermissions(effective);
+
       setSearchQuery('');
-      setStatusFilter('ALL');
       setSelectedCategory('ALL');
+      setBranchFilter('ALL');
       setErrorMessage(null);
+      setSuccessMessage(null);
+      setIsBranchEditorOpen(false);
     }
   }, [targetUser, isOpen]);
 
-  // Toggle single permission
-  const handleToggle = (permId: UserPermission) => {
-    setSelectedPermissions((prev) =>
-      prev.includes(permId) ? prev.filter((p) => p !== permId) : [...prev, permId]
-    );
-  };
+  // Handle adding a branch to target user
+  const handleAddBranch = async (branchName: string) => {
+    const clean = branchName.trim();
+    if (!clean || !activeUser) return;
+    if (assignedBranches.some((b) => areBranchesEqual(b, clean))) {
+      setErrorMessage(`Branch "${clean}" is already assigned to ${activeUser.name}.`);
+      return;
+    }
 
-  // Select all permissions
-  const handleSelectAll = () => {
-    setSelectedPermissions(ALL_PERMISSIONS.map((p) => p.id));
-  };
+    const nextBranches = [...assignedBranches, clean];
+    setAssignedBranches(nextBranches);
+    setNewBranchInput('');
+    setErrorMessage(null);
 
-  // Clear all permissions
-  const handleClearAll = () => {
-    setSelectedPermissions([]);
-  };
-
-  // Select all permissions in category
-  const handleSelectCategory = (category: string) => {
-    const categoryPermIds = ALL_PERMISSIONS.filter((p) => p.category === category).map((p) => p.id);
-    setSelectedPermissions((prev) => Array.from(new Set([...prev, ...categoryPermIds])));
-  };
-
-  // Clear all permissions in category
-  const handleClearCategory = (category: string) => {
-    const categoryPermIds = ALL_PERMISSIONS.filter((p) => p.category === category).map((p) => p.id);
-    setSelectedPermissions((prev) => prev.filter((p) => !categoryPermIds.includes(p)));
-  };
-
-  // Filtered permissions list
-  const filteredPermissions = useMemo(() => {
-    return ALL_PERMISSIONS.filter((perm) => {
-      const isAssigned = selectedPermissions.includes(perm.id);
-
-      // Status Filter
-      if (statusFilter === 'ASSIGNED' && !isAssigned) return false;
-      if (statusFilter === 'UNASSIGNED' && isAssigned) return false;
-
-      // Category Filter
-      if (selectedCategory !== 'ALL' && perm.category !== selectedCategory) return false;
-
-      // Search Query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        return (
-          perm.label.toLowerCase().includes(q) ||
-          perm.id.toLowerCase().includes(q) ||
-          perm.category.toLowerCase().includes(q) ||
-          perm.description.toLowerCase().includes(q)
-        );
+    // Save branches immediately to user
+    try {
+      const actor = {
+        uid: currentUserProfile?.uid || 'admin',
+        name: currentUserProfile?.name || 'Administrator',
+        role: currentRole || 'MAIN_ADMIN',
+      };
+      const res = await userService.updateUserAssignedBranches(activeUser.uid, nextBranches, actor);
+      if (res.success && res.user) {
+        setActiveUser(res.user);
+        setSuccessMessage(`Branch "${clean}" added to ${activeUser.name}.`);
+        setTimeout(() => setSuccessMessage(null), 3000);
       }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to update branch assignment.');
+    }
+  };
 
-      return true;
-    });
-  }, [selectedPermissions, statusFilter, selectedCategory, searchQuery]);
+  // Handle removing a branch from target user (pruning permissions automatically)
+  const handleRemoveBranch = async (branchName: string) => {
+    if (!activeUser) return;
+    const nextBranches = assignedBranches.filter((b) => !areBranchesEqual(b, branchName));
+    setAssignedBranches(nextBranches);
 
-  // Group filtered results by category
-  const groupedPermissions = useMemo(() => {
-    const groups: Record<string, PermissionDefinition[]> = {};
-    for (const cat of PERMISSION_CATEGORIES) {
-      const items = filteredPermissions.filter((p) => p.category === cat);
-      if (items.length > 0) {
-        groups[cat] = items;
+    // Prune permissions that reference this branch
+    const nextPermissions = scopedPermissions
+      .map((sp) => {
+        if (sp.scopeType === 'ALL_ASSIGNED_BRANCHES') return sp;
+        return {
+          ...sp,
+          branchIds: sp.branchIds.filter((b) => !areBranchesEqual(b, branchName)),
+        };
+      })
+      .filter((sp) => sp.scopeType === 'ALL_ASSIGNED_BRANCHES' || sp.branchIds.length > 0);
+
+    setScopedPermissions(nextPermissions);
+
+    try {
+      const actor = {
+        uid: currentUserProfile?.uid || 'admin',
+        name: currentUserProfile?.name || 'Administrator',
+        role: currentRole || 'MAIN_ADMIN',
+      };
+      const res = await userService.updateUserAssignedBranches(activeUser.uid, nextBranches, actor);
+      if (res.success && res.user) {
+        setActiveUser(res.user);
+        setSuccessMessage(`Branch "${branchName}" removed. Permissions automatically updated.`);
+        setTimeout(() => setSuccessMessage(null), 3000);
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to update branch assignment.');
+    }
+  };
+
+  // Toggle specific action on a specific branch directly in the matrix
+  const handleToggleBranchAction = (permKey: string, branch: string, action: string) => {
+    if (!activeUser) return;
+
+    // Delegation check if current user is not MAIN_ADMIN
+    if (currentRole !== 'MAIN_ADMIN') {
+      const delegationCheck = canUserDelegatePermission(
+        currentUserProfile,
+        branch,
+        permKey,
+        [action]
+      );
+      if (!delegationCheck.allowed) {
+        setErrorMessage(delegationCheck.reason || 'Delegation check failed.');
+        return;
       }
     }
-    return groups;
-  }, [filteredPermissions]);
 
-  const handleSave = async () => {
+    setScopedPermissions((prev) => {
+      // Find matching permission
+      const existingIdx = prev.findIndex((p) => p.permissionId === permKey);
+
+      if (existingIdx === -1) {
+        // No permission for this module yet: create new SELECTED_BRANCHES entry with this action on this branch
+        return [
+          ...prev,
+          {
+            permissionId: permKey,
+            actions: [action],
+            scopeType: 'SELECTED_BRANCHES',
+            branchIds: [branch],
+          },
+        ];
+      }
+
+      const currentPerm = prev[existingIdx];
+      const isCurrentlyAllowed = canPerformAction(
+        {
+          ...activeUser,
+          assignedBranches,
+          scopedPermissions: prev,
+        },
+        permKey,
+        branch,
+        action
+      );
+
+      // If already has permission, we want to revoke this action on this branch
+      if (isCurrentlyAllowed) {
+        // If ALL_ASSIGNED_BRANCHES, split into SELECTED_BRANCHES for other branches or remove action
+        if (currentPerm.scopeType === 'ALL_ASSIGNED_BRANCHES') {
+          // If only 1 assigned branch, remove action from actions array
+          if (assignedBranches.length <= 1) {
+            const nextActions = currentPerm.actions.filter((a) => a !== action);
+            if (nextActions.length === 0) {
+              return prev.filter((_, idx) => idx !== existingIdx);
+            }
+            const updated = [...prev];
+            updated[existingIdx] = { ...currentPerm, actions: nextActions };
+            return updated;
+          } else {
+            // Convert to SELECTED_BRANCHES without this branch
+            const remainingBranches = assignedBranches.filter((b) => !areBranchesEqual(b, branch));
+            const updated = [...prev];
+            updated[existingIdx] = {
+              ...currentPerm,
+              scopeType: 'SELECTED_BRANCHES',
+              branchIds: remainingBranches,
+            };
+            return updated;
+          }
+        } else {
+          // SELECTED_BRANCHES
+          const remainingBranches = (currentPerm.branchIds || []).filter((b) => !areBranchesEqual(b, branch));
+          if (remainingBranches.length === 0) {
+            return prev.filter((_, idx) => idx !== existingIdx);
+          }
+          const updated = [...prev];
+          updated[existingIdx] = {
+            ...currentPerm,
+            branchIds: remainingBranches,
+          };
+          return updated;
+        }
+      } else {
+        // Grant action on this branch
+        const updated = [...prev];
+        const nextActions = Array.from(new Set([...currentPerm.actions, action]));
+        const nextBranches = Array.from(new Set([...(currentPerm.branchIds || []), branch]));
+
+        // Check if now covers all assigned branches
+        const coversAll = assignedBranches.every((ab) =>
+          nextBranches.some((nb) => areBranchesEqual(nb, ab))
+        );
+
+        updated[existingIdx] = {
+          ...currentPerm,
+          actions: nextActions,
+          scopeType: coversAll ? 'ALL_ASSIGNED_BRANCHES' : 'SELECTED_BRANCHES',
+          branchIds: coversAll ? [] : nextBranches,
+        };
+        return updated;
+      }
+    });
+
+    setErrorMessage(null);
+  };
+
+  // Revoke entire permission module for this user
+  const handleRevokePermission = (permKey: string) => {
+    setScopedPermissions((prev) => prev.filter((p) => p.permissionId !== permKey));
+    setErrorMessage(null);
+  };
+
+  // Save permission granted from GrantPermissionModal (preventing duplicate entries)
+  const handleSaveFromGrantModal = async (newScopedPerm: ScopedPermission) => {
+    setScopedPermissions((prev) => {
+      // Find existing entry for this permissionId
+      const existingIdx = prev.findIndex((p) => p.permissionId === newScopedPerm.permissionId);
+
+      if (existingIdx !== -1) {
+        // Update existing permission record in place without duplicating
+        const updated = [...prev];
+        updated[existingIdx] = newScopedPerm;
+        return updated;
+      } else {
+        return [...prev, newScopedPerm];
+      }
+    });
+
+    setSuccessMessage(`Permission "${newScopedPerm.permissionId}" staged.`);
+    setTimeout(() => setSuccessMessage(null), 3000);
+  };
+
+  // Save all permissions to backend/Firestore
+  const handleSaveAll = async () => {
+    if (!activeUser) return;
     setIsSaving(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
+
     try {
-      await onSavePermissions(selectedPermissions);
-      onClose();
+      const actor = {
+        uid: currentUserProfile?.uid || 'admin',
+        name: currentUserProfile?.name || 'Administrator',
+        role: currentRole || 'MAIN_ADMIN',
+      };
+
+      const res = await userService.updateUserScopedPermissions(
+        activeUser.uid,
+        scopedPermissions,
+        actor
+      );
+
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to save scoped permissions.');
+      }
+
+      if (onSavePermissions && res.user?.permissions) {
+        await onSavePermissions(res.user.permissions);
+      }
+
+      if (onPermissionsUpdated) {
+        onPermissionsUpdated();
+      }
+
+      setSuccessMessage('Permissions successfully saved and applied in real time.');
+      setTimeout(() => {
+        onClose();
+      }, 700);
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Failed to update permissions.');
+      setErrorMessage(err?.message || 'Failed to save permissions.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (!targetUser) return null;
+  // Filter modules based on search and category
+  const filteredModules = useMemo(() => {
+    return ALL_PERMISSIONS.filter((p) => {
+      if (selectedCategory !== 'ALL' && p.category !== selectedCategory) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        return (
+          p.label.toLowerCase().includes(q) ||
+          p.key.toLowerCase().includes(q) ||
+          p.description.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [selectedCategory, searchQuery]);
 
-  const totalAvailable = ALL_PERMISSIONS.length;
-  const assignedCount = selectedPermissions.length;
-  const unassignedCount = totalAvailable - assignedCount;
-  const percentAssigned = Math.round((assignedCount / totalAvailable) * 100);
+  // Compute coverage metrics
+  const activeModulesCount = useMemo(() => {
+    const keys = new Set(scopedPermissions.map((sp) => sp.permissionId));
+    return keys.size;
+  }, [scopedPermissions]);
+
+  if (!targetUser || !activeUser) return null;
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={`Manage Permissions — ${targetUser.name}`}
-      size="large"
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {errorMessage && (
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={`Permission & Branch Governance — ${activeUser.name}`}
+        size="large"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: '80vh', overflowY: 'auto' }}>
+          {errorMessage && (
+            <Alert variant="danger" title="Error" dismissible onDismiss={() => setErrorMessage(null)}>
+              {errorMessage}
+            </Alert>
+          )}
+
+          {successMessage && (
+            <Alert variant="success" title="Success" dismissible onDismiss={() => setSuccessMessage(null)}>
+              {successMessage}
+            </Alert>
+          )}
+
+          {/* Section 16: User Dossier Header */}
           <div
             style={{
-              padding: '0.75rem 1rem',
-              backgroundColor: 'var(--color-danger-light, #fef2f2)',
-              border: '1px solid var(--color-danger, #ef4444)',
+              padding: '1.15rem',
+              backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
               borderRadius: 'var(--radius-md, 8px)',
-              color: 'var(--color-danger, #ef4444)',
-              fontSize: '0.85rem',
+              border: '1px solid var(--color-border, #e2e8f0)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.85rem',
             }}
           >
-            {errorMessage}
-          </div>
-        )}
-
-        {/* User Information Dossier Header */}
-        <div
-          style={{
-            padding: '1rem',
-            backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
-            borderRadius: 'var(--radius-md, 8px)',
-            border: '1px solid var(--color-border, #e2e8f0)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.75rem',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div
-                style={{
-                  width: '44px',
-                  height: '44px',
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-primary, #2563eb)',
-                  color: '#ffffff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1.15rem',
-                  fontWeight: 700,
-                  flexShrink: 0,
-                }}
-              >
-                {targetUser.name.charAt(0)}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                <div
+                  style={{
+                    width: '46px',
+                    height: '46px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--color-primary, #2563eb)',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.25rem',
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}
+                >
+                  {activeUser.name.charAt(0)}
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-text-main, #0f172a)' }}>
+                      {activeUser.name}
+                    </h3>
+                    <Badge variant={activeUser.role === 'SUB_ADMIN' ? 'warning' : 'info'}>
+                      {activeUser.role}
+                    </Badge>
+                    <Badge variant={activeUser.isActive ? 'success' : 'danger'}>
+                      {activeUser.isActive ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </div>
+                  <div style={{ fontSize: '0.84rem', color: 'var(--color-text-muted, #64748b)', marginTop: '0.2rem' }}>
+                    {activeUser.email}
+                    {activeUser.employeeId && ` • ID: ${activeUser.employeeId}`}
+                    {activeUser.department && ` • ${activeUser.department}`}
+                  </div>
+                </div>
               </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--color-text-main, #0f172a)' }}>
-                    {targetUser.name}
-                  </h3>
-                  <Badge variant={targetUser.role === 'SUB_ADMIN' ? 'warning' : 'info'}>
-                    {targetUser.role}
-                  </Badge>
-                  {targetUser.isActive ? (
-                    <Badge variant="success">Active</Badge>
-                  ) : (
-                    <Badge variant="danger">Inactive</Badge>
-                  )}
-                </div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted, #64748b)', marginTop: '0.15rem' }}>
-                  {targetUser.email}
-                  {targetUser.employeeId && ` • ID: ${targetUser.employeeId}`}
-                  {targetUser.department && ` • ${targetUser.department}`}
-                </div>
+
+              {/* Action: Open Grant Permission Modal */}
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Plus size={15} />}
+                  onClick={() => {
+                    setPermissionToEdit(null);
+                    setIsGrantModalOpen(true);
+                  }}
+                  disabled={assignedBranches.length === 0}
+                >
+                  Grant Permission
+                </Button>
               </div>
             </div>
 
-            {/* Permission Summary Metric Pill */}
+            {/* Section 1: User Assigned Branches Showcase */}
             <div
               style={{
+                borderTop: '1px solid var(--color-border, #e2e8f0)',
+                paddingTop: '0.75rem',
                 display: 'flex',
                 flexDirection: 'column',
-                alignItems: 'flex-end',
-                gap: '0.2rem',
+                gap: '0.5rem',
               }}
             >
-              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-primary, #2563eb)' }}>
-                Assigned: {assignedCount} / {totalAvailable}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Building size={16} style={{ color: 'var(--color-primary, #2563eb)' }} />
+                  <strong style={{ fontSize: '0.85rem', color: 'var(--color-text-main, #0f172a)' }}>
+                    Assigned Branches:
+                  </strong>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #64748b)' }}>
+                    ({assignedBranches.length} assigned)
+                  </span>
+                </div>
+
+                {currentRole === 'MAIN_ADMIN' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    leftIcon={<Edit2 size={13} />}
+                    onClick={() => setIsBranchEditorOpen(!isBranchEditorOpen)}
+                  >
+                    {isBranchEditorOpen ? 'Close Branch Editor' : 'Manage Assigned Branches'}
+                  </Button>
+                )}
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #64748b)' }}>
-                {unassignedCount} unassigned ({percentAssigned}% coverage)
+
+              {/* Badges of assigned branches */}
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                {assignedBranches.length === 0 ? (
+                  <span style={{ fontSize: '0.85rem', color: 'var(--color-danger, #ef4444)', fontWeight: 500 }}>
+                    ⚠️ No branches assigned. A user must be assigned to at least one branch to receive permissions.
+                  </span>
+                ) : (
+                  assignedBranches.map((branch) => (
+                    <span
+                      key={branch}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.25rem 0.6rem',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid var(--color-border, #cbd5e1)',
+                        borderRadius: 'var(--radius-sm, 6px)',
+                        fontSize: '0.82rem',
+                        fontWeight: 600,
+                        color: 'var(--color-text-main, #0f172a)',
+                      }}
+                    >
+                      {branch}
+                      {currentRole === 'MAIN_ADMIN' && isBranchEditorOpen && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBranch(branch)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--color-danger, #ef4444)',
+                            padding: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                          title={`Remove ${branch}`}
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </span>
+                  ))
+                )}
               </div>
+
+              {/* Branch Editor Drawer */}
+              {isBranchEditorOpen && currentRole === 'MAIN_ADMIN' && (
+                <div
+                  style={{
+                    marginTop: '0.5rem',
+                    padding: '0.75rem',
+                    backgroundColor: '#ffffff',
+                    border: '1px dashed var(--color-primary, #2563eb)',
+                    borderRadius: 'var(--radius-md, 6px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.65rem',
+                  }}
+                >
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-muted, #64748b)' }}>
+                    Add Branch from Institutional Directory or Type Custom:
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {availableSystemBranches
+                      .filter((b) => !assignedBranches.some((ab) => areBranchesEqual(ab, b)))
+                      .map((b) => (
+                        <button
+                          key={b}
+                          type="button"
+                          onClick={() => handleAddBranch(b)}
+                          style={{
+                            padding: '0.3rem 0.65rem',
+                            borderRadius: 'var(--radius-sm, 6px)',
+                            border: '1px solid var(--color-border, #cbd5e1)',
+                            backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                          }}
+                        >
+                          <Plus size={12} /> {b}
+                        </button>
+                      ))}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      placeholder="Or enter custom branch (e.g. MCA, MBA, BCA)..."
+                      value={newBranchInput}
+                      onChange={(e) => setNewBranchInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddBranch(newBranchInput);
+                        }
+                      }}
+                      style={{
+                        padding: '0.4rem 0.65rem',
+                        borderRadius: 'var(--radius-sm, 6px)',
+                        border: '1px solid var(--color-border, #cbd5e1)',
+                        fontSize: '0.85rem',
+                        flex: 1,
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleAddBranch(newBranchInput)}
+                      disabled={!newBranchInput.trim()}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Quick Select Actions and Coverage Bar */}
+          {/* Search & Category Filter Toolbar */}
           <div
             style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              borderTop: '1px solid var(--color-border, #e2e8f0)',
-              paddingTop: '0.65rem',
               flexWrap: 'wrap',
-              gap: '0.5rem',
+              gap: '0.75rem',
             }}
           >
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={handleSelectAll}
-                style={{
-                  background: 'none',
-                  border: '1px solid var(--color-border, #cbd5e1)',
-                  borderRadius: 'var(--radius-sm, 6px)',
-                  padding: '3px 8px',
-                  fontSize: '0.78rem',
-                  fontWeight: 600,
-                  color: 'var(--color-primary, #2563eb)',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                  backgroundColor: 'var(--color-bg-surface, #ffffff)',
-                }}
-              >
-                <CheckSquare size={13} />
-                <span>Select All ({totalAvailable})</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleClearAll}
-                style={{
-                  background: 'none',
-                  border: '1px solid var(--color-border, #cbd5e1)',
-                  borderRadius: 'var(--radius-sm, 6px)',
-                  padding: '3px 8px',
-                  fontSize: '0.78rem',
-                  fontWeight: 600,
-                  color: 'var(--color-text-muted, #64748b)',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                  backgroundColor: 'var(--color-bg-surface, #ffffff)',
-                }}
-              >
-                <Square size={13} />
-                <span>Clear All</span>
-              </button>
-            </div>
-
-            {/* Visual Progress Bar */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '180px' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', flex: 1, minWidth: '220px', maxWidth: '380px' }}>
               <div
                 style={{
-                  flex: 1,
-                  height: '6px',
-                  backgroundColor: 'var(--color-border, #e2e8f0)',
-                  borderRadius: '999px',
-                  overflow: 'hidden',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.45rem 0.75rem',
+                  borderRadius: 'var(--radius-md, 6px)',
+                  border: '1px solid var(--color-border, #cbd5e1)',
+                  backgroundColor: '#ffffff',
+                  width: '100%',
                 }}
               >
-                <div
-                  style={{
-                    width: `${percentAssigned}%`,
-                    height: '100%',
-                    backgroundColor: assignedCount > 0 ? 'var(--color-primary, #2563eb)' : 'transparent',
-                    transition: 'width 0.2s ease',
-                  }}
+                <Search size={16} style={{ color: 'var(--color-text-muted, #64748b)' }} />
+                <input
+                  type="text"
+                  placeholder="Filter permissions by name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ border: 'none', outline: 'none', width: '100%', fontSize: '0.85rem' }}
                 />
               </div>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted, #64748b)' }}>
-                {percentAssigned}%
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Search & Filter Toolbar */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.65rem',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              gap: '0.65rem',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-            }}
-          >
-            {/* Search Input */}
-            <div style={{ flex: '1 1 240px', position: 'relative' }}>
-              <Search
-                size={16}
-                style={{
-                  position: 'absolute',
-                  left: '0.75rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: 'var(--color-text-muted, #94a3b8)',
-                }}
-              />
-              <input
-                type="text"
-                className="input-field"
-                placeholder="Search permissions..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ paddingLeft: '2.25rem' }}
-                aria-label="Search permissions"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  style={{
-                    position: 'absolute',
-                    right: '0.65rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--color-text-muted, #94a3b8)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '2px',
-                  }}
-                  aria-label="Clear search"
-                >
-                  <X size={14} />
-                </button>
-              )}
             </div>
 
-            {/* Module Filter Select */}
-            <div style={{ flex: '0 1 180px' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <select
-                className="input-field"
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                aria-label="Filter by module"
+                style={{
+                  padding: '0.45rem 0.75rem',
+                  borderRadius: 'var(--radius-md, 6px)',
+                  border: '1px solid var(--color-border, #cbd5e1)',
+                  fontSize: '0.85rem',
+                  backgroundColor: '#ffffff',
+                }}
               >
-                <option value="ALL">All Modules</option>
-                {PERMISSION_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
+                <option value="ALL">All Categories</option>
+                {PERMISSION_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                style={{
+                  padding: '0.45rem 0.75rem',
+                  borderRadius: 'var(--radius-md, 6px)',
+                  border: '1px solid var(--color-border, #cbd5e1)',
+                  fontSize: '0.85rem',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                <option value="ALL">All Assigned Branches</option>
+                {assignedBranches.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
                   </option>
                 ))}
               </select>
             </div>
           </div>
 
-          {/* Status Filter Chips */}
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted, #64748b)', marginRight: '0.2rem' }}>
-              Filter:
-            </span>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('ALL')}
-              style={{
-                padding: '3px 9px',
-                borderRadius: '999px',
-                fontSize: '0.75rem',
-                fontWeight: statusFilter === 'ALL' ? 600 : 500,
-                border: statusFilter === 'ALL' ? '1px solid var(--color-primary, #2563eb)' : '1px solid var(--color-border, #cbd5e1)',
-                backgroundColor: statusFilter === 'ALL' ? 'var(--color-primary-light, #eff6ff)' : 'var(--color-bg-surface, #ffffff)',
-                color: statusFilter === 'ALL' ? 'var(--color-primary, #2563eb)' : 'var(--color-text-main, #334155)',
-                cursor: 'pointer',
-              }}
-            >
-              All ({totalAvailable})
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('ASSIGNED')}
-              style={{
-                padding: '3px 9px',
-                borderRadius: '999px',
-                fontSize: '0.75rem',
-                fontWeight: statusFilter === 'ASSIGNED' ? 600 : 500,
-                border: statusFilter === 'ASSIGNED' ? '1px solid var(--color-primary, #2563eb)' : '1px solid var(--color-border, #cbd5e1)',
-                backgroundColor: statusFilter === 'ASSIGNED' ? 'var(--color-primary-light, #eff6ff)' : 'var(--color-bg-surface, #ffffff)',
-                color: statusFilter === 'ASSIGNED' ? 'var(--color-primary, #2563eb)' : 'var(--color-text-main, #334155)',
-                cursor: 'pointer',
-              }}
-            >
-              Assigned ({assignedCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('UNASSIGNED')}
-              style={{
-                padding: '3px 9px',
-                borderRadius: '999px',
-                fontSize: '0.75rem',
-                fontWeight: statusFilter === 'UNASSIGNED' ? 600 : 500,
-                border: statusFilter === 'UNASSIGNED' ? '1px solid var(--color-primary, #2563eb)' : '1px solid var(--color-border, #cbd5e1)',
-                backgroundColor: statusFilter === 'UNASSIGNED' ? 'var(--color-primary-light, #eff6ff)' : 'var(--color-bg-surface, #ffffff)',
-                color: statusFilter === 'UNASSIGNED' ? 'var(--color-primary, #2563eb)' : 'var(--color-text-main, #334155)',
-                cursor: 'pointer',
-              }}
-            >
-              Not Assigned ({unassignedCount})
-            </button>
-          </div>
-        </div>
+          {/* Section 16: Module Grouped Permissions Matrix */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {filteredModules.map((moduleDef) => {
+              // Find if user has a scoped permission object for this module
+              const activePerm = scopedPermissions.find((sp) => sp.permissionId === moduleDef.key);
+              const isModuleActive = Boolean(activePerm && activePerm.actions.length > 0);
 
-        {/* Scrollable Permissions Matrix grouped by Module */}
-        <div
-          style={{
-            maxHeight: '48vh',
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1.25rem',
-            paddingRight: '0.35rem',
-          }}
-        >
-          {filteredPermissions.length === 0 ? (
-            <div
-              style={{
-                padding: '2.5rem 1rem',
-                textAlign: 'center',
-                backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
-                borderRadius: 'var(--radius-md, 8px)',
-                border: '1px dashed var(--color-border, #cbd5e1)',
-              }}
-            >
-              <Layers size={32} style={{ color: 'var(--color-text-muted, #94a3b8)', margin: '0 auto 0.5rem auto' }} />
-              <div style={{ fontWeight: 600, color: 'var(--color-text-main, #334155)', fontSize: '0.95rem' }}>
-                No permissions match the selected filter
-              </div>
-              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted, #64748b)' }}>
-                Try switching the status filter to &quot;All&quot; or clearing the search query.
-              </p>
-            </div>
-          ) : (
-            Object.entries(groupedPermissions).map(([category, items]) => {
-              const catTotal = ALL_PERMISSIONS.filter((p) => p.category === category).length;
-              const catAssigned = items.filter((p) => selectedPermissions.includes(p.id)).length;
-              const isAllCatSelected = catAssigned === catTotal;
+              const branchesToDisplay =
+                branchFilter === 'ALL'
+                  ? assignedBranches
+                  : assignedBranches.filter((b) => areBranchesEqual(b, branchFilter));
 
               return (
-                <div key={category} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {/* Category Header with Bulk Category Controls */}
+                <div
+                  key={moduleDef.key}
+                  style={{
+                    borderRadius: 'var(--radius-md, 8px)',
+                    border: `1px solid ${isModuleActive ? 'var(--color-primary, #2563eb)' : 'var(--color-border, #e2e8f0)'}`,
+                    backgroundColor: isModuleActive ? '#ffffff' : 'var(--color-bg-secondary, #fafbfc)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {/* Module Header Card */}
                   <div
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      paddingBottom: '0.35rem',
+                      padding: '0.85rem 1rem',
+                      backgroundColor: isModuleActive ? 'rgba(37, 99, 235, 0.04)' : '#f8fafc',
                       borderBottom: '1px solid var(--color-border, #e2e8f0)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                       flexWrap: 'wrap',
-                      gap: '0.4rem',
+                      gap: '0.5rem',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Shield size={15} style={{ color: 'var(--color-primary, #2563eb)' }} />
-                      <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--color-text-main, #0f172a)' }}>
-                        {category}
-                      </span>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted, #64748b)' }}>
-                        ({catAssigned} / {catTotal} assigned)
-                      </span>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <strong style={{ fontSize: '0.95rem', color: 'var(--color-text-main, #0f172a)' }}>
+                          {moduleDef.label}
+                        </strong>
+                        <Badge variant="neutral">{moduleDef.category}</Badge>
+                        {isModuleActive ? (
+                          <Badge variant="success">Active</Badge>
+                        ) : (
+                          <Badge variant="neutral">Not Granted</Badge>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #64748b)', marginTop: '0.2rem' }}>
+                        {moduleDef.description}
+                      </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '0.35rem' }}>
-                      <button
+                    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                      <Button
                         type="button"
-                        onClick={() =>
-                          isAllCatSelected ? handleClearCategory(category) : handleSelectCategory(category)
-                        }
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '2px 6px',
-                          color: 'var(--color-primary, #2563eb)',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
+                        variant="outline"
+                        size="sm"
+                        leftIcon={<Edit2 size={13} />}
+                        onClick={() => {
+                          setPermissionToEdit(activePerm || {
+                            permissionId: moduleDef.key,
+                            actions: moduleDef.defaultActions,
+                            scopeType: 'ALL_ASSIGNED_BRANCHES',
+                            branchIds: [],
+                          });
+                          setIsGrantModalOpen(true);
                         }}
+                        disabled={assignedBranches.length === 0}
                       >
-                        {isAllCatSelected ? 'Deselect Module' : 'Select Module'}
-                      </button>
+                        {isModuleActive ? 'Edit Scope' : 'Configure'}
+                      </Button>
+
+                      {isModuleActive && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRevokePermission(moduleDef.key)}
+                          style={{ color: 'var(--color-danger, #ef4444)' }}
+                          title="Revoke all access to this module"
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      )}
                     </div>
                   </div>
 
-                  {/* Grid of Permission Items */}
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                      gap: '0.65rem',
-                    }}
-                  >
-                    {items.map((perm) => {
-                      const isAssigned = selectedPermissions.includes(perm.id);
-
-                      return (
-                        <div
-                          key={perm.id}
-                          onClick={() => handleToggle(perm.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              handleToggle(perm.id);
-                            }
-                          }}
-                          tabIndex={0}
-                          role="checkbox"
-                          aria-checked={isAssigned}
-                          aria-label={`Toggle permission ${perm.label}`}
-                          style={{
-                            padding: '0.85rem',
-                            backgroundColor: isAssigned
-                              ? 'var(--color-primary-light, #eff6ff)'
-                              : 'var(--color-bg-surface, #ffffff)',
-                            borderRadius: 'var(--radius-md, 8px)',
-                            border: isAssigned
-                              ? '1px solid var(--color-primary, #2563eb)'
-                              : '1px solid var(--color-border, #e2e8f0)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '0.4rem',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            boxShadow: isAssigned
-                              ? '0 0 0 1px var(--color-primary, #2563eb)'
-                              : '0 1px 2px rgba(0, 0, 0, 0.03)',
-                            outline: 'none',
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <div
-                                style={{
-                                  width: '18px',
-                                  height: '18px',
-                                  borderRadius: '4px',
-                                  border: isAssigned
-                                    ? '1.5px solid var(--color-primary, #2563eb)'
-                                    : '1.5px solid var(--color-border, #94a3b8)',
-                                  backgroundColor: isAssigned ? 'var(--color-primary, #2563eb)' : '#ffffff',
-                                  color: '#ffffff',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {isAssigned && <Check size={12} strokeWidth={3} />}
-                              </div>
-                              <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--color-text-main, #0f172a)' }}>
-                                {perm.label}
-                              </span>
-                            </div>
-
-                            <Badge variant={isAssigned ? 'success' : 'neutral'} style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
-                              {isAssigned ? 'Assigned' : 'Unassigned'}
-                            </Badge>
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '1.65rem' }}>
-                            <code
-                              style={{
-                                fontSize: '0.72rem',
-                                fontWeight: 600,
-                                fontFamily: 'monospace',
-                                backgroundColor: isAssigned ? '#ffffff' : 'var(--color-bg-secondary, #f1f5f9)',
-                                color: isAssigned ? 'var(--color-primary, #2563eb)' : 'var(--color-text-muted, #64748b)',
-                                padding: '1px 5px',
-                                borderRadius: '4px',
-                                border: '1px solid var(--color-border, #cbd5e1)',
-                              }}
-                            >
-                              {perm.id}
-                            </code>
-                          </div>
-
-                          <p
+                  {/* Section 16 Matrix: Grouped by Assigned Branch */}
+                  <div style={{ padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    {branchesToDisplay.length === 0 ? (
+                      <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted, #64748b)', fontStyle: 'italic' }}>
+                        No assigned branches match the current branch filter.
+                      </div>
+                    ) : (
+                      branchesToDisplay.map((branch) => {
+                        return (
+                          <div
+                            key={branch}
                             style={{
-                              margin: '0.15rem 0 0 1.65rem',
-                              fontSize: '0.78rem',
-                              color: 'var(--color-text-muted, #64748b)',
-                              lineHeight: 1.4,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '0.5rem 0.75rem',
+                              borderRadius: 'var(--radius-sm, 6px)',
+                              backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
+                              border: '1px solid var(--color-border, #e2e8f0)',
+                              flexWrap: 'wrap',
+                              gap: '0.5rem',
                             }}
                           >
-                            {perm.description}
-                          </p>
-                        </div>
-                      );
-                    })}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '120px' }}>
+                              <Building size={14} style={{ color: 'var(--color-text-muted, #64748b)' }} />
+                              <strong style={{ fontSize: '0.88rem', color: 'var(--color-text-main, #0f172a)' }}>
+                                {branch}
+                              </strong>
+                            </div>
+
+                            {/* Action checkboxes for this branch */}
+                            <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+                              {moduleDef.supportedActions.map((action) => {
+                                const hasAction = canPerformAction(
+                                  {
+                                    ...activeUser,
+                                    assignedBranches,
+                                    scopedPermissions,
+                                  },
+                                  moduleDef.key,
+                                  branch,
+                                  action
+                                );
+
+                                return (
+                                  <label
+                                    key={action}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.35rem',
+                                      fontSize: '0.82rem',
+                                      cursor: 'pointer',
+                                      color: hasAction ? 'var(--color-primary, #2563eb)' : 'var(--color-text-muted, #64748b)',
+                                      fontWeight: hasAction ? 600 : 400,
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={hasAction}
+                                      onChange={() =>
+                                        handleToggleBranchAction(moduleDef.key, branch, action)
+                                      }
+                                      style={{ cursor: 'pointer' }}
+                                    />
+                                    <span>{action.toUpperCase()}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
 
-        {/* Modal Actions Footer */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            borderTop: '1px solid var(--color-border, #e2e8f0)',
-            paddingTop: '1rem',
-            marginTop: '0.25rem',
-            flexWrap: 'wrap',
-            gap: '0.75rem',
+          {/* Modal Footer Controls */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              borderTop: '1px solid var(--color-border, #e2e8f0)',
+              paddingTop: '1rem',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+            }}
+          >
+            <div style={{ fontSize: '0.84rem', color: 'var(--color-text-muted, #64748b)' }}>
+              Active Modules: <strong>{activeModulesCount}</strong> / {ALL_PERMISSIONS.length}
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleSaveAll}
+                disabled={isSaving}
+                leftIcon={<Shield size={16} />}
+              >
+                {isSaving ? 'Saving Changes...' : 'Save & Enforce Permissions'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Grant / Edit Scoped Permission Modal */}
+      {isGrantModalOpen && (
+        <GrantPermissionModal
+          isOpen={isGrantModalOpen}
+          onClose={() => {
+            setIsGrantModalOpen(false);
+            setPermissionToEdit(null);
           }}
-        >
-          <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted, #64748b)' }}>
-            <strong>{assignedCount}</strong> permissions selected for {targetUser.name} ({targetUser.role})
-          </div>
-
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <Button variant="ghost" type="button" onClick={onClose} disabled={isSaving}>
-              Cancel
-            </Button>
-            <Button variant="primary" type="button" onClick={handleSave} isLoading={isSaving}>
-              Save Permissions
-            </Button>
-          </div>
-        </div>
-      </div>
-    </Modal>
+          targetUser={activeUser}
+          grantorUser={currentUserProfile}
+          existingPermission={permissionToEdit}
+          onSave={handleSaveFromGrantModal}
+        />
+      )}
+    </>
   );
 };

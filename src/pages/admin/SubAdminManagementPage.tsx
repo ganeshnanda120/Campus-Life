@@ -116,6 +116,7 @@ export const SubAdminManagementPage: React.FC = () => {
     designation: 'Hostel Warden',
     phone: '',
     employeeId: '',
+    assignedBranches: [] as string[],
     customFields: {} as Record<string, any>,
   };
   const [formData, setFormData] = useState(initialFormData);
@@ -164,6 +165,7 @@ export const SubAdminManagementPage: React.FC = () => {
       designation: admin.designation || '',
       phone: admin.phone || '',
       employeeId: admin.employeeId || '',
+      assignedBranches: admin.assignedBranches || [],
       customFields: admin.customFields || {},
     });
     setCustomFieldErrors({});
@@ -235,6 +237,7 @@ export const SubAdminManagementPage: React.FC = () => {
           designation: formData.designation.trim(),
           phone: formData.phone.trim() || undefined,
           employeeId: formData.employeeId.trim() || undefined,
+          assignedBranches: formData.assignedBranches || [],
           permissions: selectedPermissions,
           customFields: formData.customFields || {},
         },
@@ -296,6 +299,7 @@ export const SubAdminManagementPage: React.FC = () => {
           designation: formData.designation.trim(),
           phone: formData.phone.trim() || undefined,
           employeeId: formData.employeeId.trim() || undefined,
+          assignedBranches: formData.assignedBranches || [],
           customFields: formData.customFields || {},
         },
         actor
@@ -521,6 +525,7 @@ export const SubAdminManagementPage: React.FC = () => {
                   <tr>
                     <th>Sub-Admin</th>
                     <th>Role & Department</th>
+                    <th>Assigned Branches</th>
                     <th>Assigned Permissions</th>
                     <th>Status</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
@@ -546,6 +551,21 @@ export const SubAdminManagementPage: React.FC = () => {
                           <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                             {admin.department || 'Administration'}
                           </span>
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', maxWidth: '240px' }}>
+                          {(admin.assignedBranches || []).length === 0 ? (
+                            <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                              No branch assigned
+                            </span>
+                          ) : (
+                            admin.assignedBranches?.map((b) => (
+                              <Badge key={b} variant="neutral" style={{ fontSize: '0.72rem' }}>
+                                {b}
+                              </Badge>
+                            ))
+                          )}
                         </div>
                       </td>
                       <td>
@@ -670,6 +690,25 @@ export const SubAdminManagementPage: React.FC = () => {
 
                   <div>
                     <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.25rem' }}>
+                      Assigned Branches ({(admin.assignedBranches || []).length}):
+                    </span>
+                    <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                      {(admin.assignedBranches || []).length === 0 ? (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                          No branch assigned
+                        </span>
+                      ) : (
+                        admin.assignedBranches?.map((b) => (
+                          <Badge key={b} variant="neutral" style={{ fontSize: '0.7rem' }}>
+                            {b}
+                          </Badge>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.25rem' }}>
                       Permissions ({(admin.permissions || []).length}):
                     </span>
                     <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
@@ -745,6 +784,7 @@ export const SubAdminManagementPage: React.FC = () => {
           setSelectedAdmin(null);
         }}
         targetUser={selectedAdmin}
+        onPermissionsUpdated={loadSubAdmins}
         onSavePermissions={async (newPermissions) => {
           if (!selectedAdmin) return;
           const actor = {
@@ -895,6 +935,45 @@ export const SubAdminManagementPage: React.FC = () => {
             )}
           </div>
 
+          {/* Assigned Branches Section */}
+          <div style={{ padding: '0.75rem', backgroundColor: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+            <label className="input-label" style={{ marginBottom: '0.4rem', fontWeight: 600 }}>
+              Assigned Branches (Operational Scope)
+            </label>
+            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+              {['BCA', 'B.Tech', 'MCA', 'MBA'].map((b) => {
+                const isChecked = (formData.assignedBranches || []).includes(b);
+                return (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => {
+                      const next = isChecked
+                        ? formData.assignedBranches.filter((x) => x !== b)
+                        : [...formData.assignedBranches, b];
+                      setFormData({ ...formData, assignedBranches: next });
+                    }}
+                    style={{
+                      padding: '0.35rem 0.75rem',
+                      borderRadius: 'var(--radius-sm)',
+                      border: `1px solid ${isChecked ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                      backgroundColor: isChecked ? 'rgba(37, 99, 235, 0.1)' : '#ffffff',
+                      color: isChecked ? 'var(--color-primary)' : 'var(--color-text-main)',
+                      fontWeight: isChecked ? 600 : 400,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isChecked ? '✓ ' : '+ '}{b}
+                  </button>
+                );
+              })}
+            </div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.3rem', display: 'block' }}>
+              Sub-admin can only access data belonging to selected assigned branches.
+            </span>
+          </div>
+
           {/* Custom Details Section */}
           <CustomFieldsRenderer
             fields={formConfig.fields}
@@ -1022,6 +1101,45 @@ export const SubAdminManagementPage: React.FC = () => {
                 />
               </div>
             )}
+          </div>
+
+          {/* Assigned Branches Section */}
+          <div style={{ padding: '0.75rem', backgroundColor: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+            <label className="input-label" style={{ marginBottom: '0.4rem', fontWeight: 600 }}>
+              Assigned Branches (Operational Scope)
+            </label>
+            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+              {['BCA', 'B.Tech', 'MCA', 'MBA'].map((b) => {
+                const isChecked = (formData.assignedBranches || []).includes(b);
+                return (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => {
+                      const next = isChecked
+                        ? formData.assignedBranches.filter((x) => x !== b)
+                        : [...formData.assignedBranches, b];
+                      setFormData({ ...formData, assignedBranches: next });
+                    }}
+                    style={{
+                      padding: '0.35rem 0.75rem',
+                      borderRadius: 'var(--radius-sm)',
+                      border: `1px solid ${isChecked ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                      backgroundColor: isChecked ? 'rgba(37, 99, 235, 0.1)' : '#ffffff',
+                      color: isChecked ? 'var(--color-primary)' : 'var(--color-text-main)',
+                      fontWeight: isChecked ? 600 : 400,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isChecked ? '✓ ' : '+ '}{b}
+                  </button>
+                );
+              })}
+            </div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.3rem', display: 'block' }}>
+              Sub-admin can only access data belonging to selected assigned branches.
+            </span>
           </div>
 
           {/* Custom Details Section */}

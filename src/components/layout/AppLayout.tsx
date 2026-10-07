@@ -34,8 +34,8 @@ export const AppLayout: React.FC = () => {
   };
 
   return (
-    <div className="app-shell h-screen w-screen overflow-hidden flex flex-col bg-slate-50 dark:bg-slate-950">
-      {/* 2. Top Header at fixed height */}
+    <div className="app-shell">
+      {/* Top Header at fixed height */}
       <Header
         onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
         unreadNotificationsCount={unreadCount}
@@ -45,16 +45,16 @@ export const AppLayout: React.FC = () => {
       />
 
       {/* Decoupled side-by-side work zone */}
-      <div className="layout-body flex-1 flex flex-row overflow-hidden min-h-0 relative">
-        {/* 3. Sidebar Navigation constrained to calc(100vh - 4rem) */}
+      <div className="layout-body">
+        {/* Sidebar Navigation */}
         <Sidebar
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           userRole={role || 'STUDENT'}
         />
 
-        {/* 4. Main Content Area independently scrollable */}
-        <main className="main-viewport flex-1 h-[calc(100vh-4rem)] overflow-y-auto bg-slate-50 dark:bg-slate-950">
+        {/* Main Content Area independently scrollable */}
+        <main className="main-viewport">
           <div className="content-container">
             <Outlet />
           </div>

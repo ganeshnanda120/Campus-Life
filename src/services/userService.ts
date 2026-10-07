@@ -20,11 +20,18 @@ import {
   doesDegreeMatch,
   doesBranchMatch,
 } from './degreeProgramService';
+import {
+  getUserAssignedBranches,
+  areBranchesEqual,
+  findPermissionDefinition,
+  canUserDelegatePermission,
+} from './permissionService';
 import type {
   UserRecord,
   UserRole,
   StudentCategory,
   UserPermission,
+  ScopedPermission,
 } from '../types';
 
 export interface ActorContext {
@@ -39,6 +46,7 @@ export interface QueryUsersParams {
   department?: string;
   degree?: string;
   branch?: string;
+  authorizedBranches?: string[];
   year?: number | string;
   semester?: number | string;
   studentCategory?: StudentCategory | '';
@@ -219,6 +227,7 @@ class UserService {
       sortOrder = 'desc',
       page = 1,
       pageSize = 10,
+      authorizedBranches,
     } = params;
 
     let users = await this.getAllUsers();
@@ -261,6 +270,15 @@ class UserService {
     // 4. Branch filter
     if (branch && branch !== 'ALL') {
       users = users.filter((u) => {
+        if (Array.isArray(u.assignedBranches) && u.assignedBranches.length > 0) {
+          const hasBr = u.assignedBranches.some(
+            (b) =>
+              b.toLowerCase() === branch.toLowerCase() ||
+              doesBranchMatch(b, undefined, branch) ||
+              areBranchesEqual(b, branch)
+          );
+          if (hasBr) return true;
+        }
         if (Array.isArray(u.degreeAssignments) && u.degreeAssignments.length > 0) {
           const hasBr = u.degreeAssignments.some(
             (a) =>
@@ -279,6 +297,25 @@ class UserService {
           return doesBranchMatch(u.branch, u.department, branch);
         }
         return u.branch && u.branch.toLowerCase() === branch.toLowerCase();
+      });
+    }
+
+    // 4b. Authorized branches security filter (strictly restricts data access to authorized branches)
+    if (authorizedBranches && authorizedBranches.length > 0) {
+      users = users.filter((u) => {
+        const uBranches = getUserAssignedBranches(u);
+        if (uBranches.length > 0) {
+          return uBranches.some((ub) =>
+            authorizedBranches.some((ab) => areBranchesEqual(ub, ab))
+          );
+        }
+        if (u.branch) {
+          return authorizedBranches.some((ab) => doesBranchMatch(u.branch, u.department, ab));
+        }
+        if (u.degree) {
+          return authorizedBranches.some((ab) => doesDegreeMatch(u.degree, u.department, ab));
+        }
+        return false;
       });
     }
 
@@ -697,6 +734,211 @@ class UserService {
     actor: ActorContext
   ): Promise<{ success: boolean; user?: UserRecord; error?: string }> {
     return this.updateUserPermissions(uid, permissions, actor);
+  }
+
+  /**
+   * Assign or update branches for a user (SUB_ADMIN, FACULTY, STAFF).
+   * Automatically sanitizes existing scoped permissions if any branch was revoked.
+   */
+  async updateUserAssignedBranches(
+    uid: string,
+    assignedBranches: string[],
+    actor: ActorContext
+  ): Promise<{ success: boolean; user?: UserRecord; error?: string }> {
+    const existing = await this.getUserById(uid);
+    if (!existing) {
+      return { success: false, error: 'User record not found.' };
+    }
+    if (existing.role === 'MAIN_ADMIN') {
+      return { success: false, error: 'Main Administrator branch assignments cannot be modified.' };
+    }
+    if (existing.role === 'STUDENT') {
+      return { success: false, error: 'Branch assignment for students is governed by academic degree enrolments.' };
+    }
+
+    const cleanBranches = Array.from(new Set(assignedBranches.map((b) => b.trim()).filter(Boolean)));
+    const now = new Date().toISOString();
+
+    // Sanitize scopedPermissions: automatically prune branches no longer assigned to user
+    const updatedScopedPermissions = (existing.scopedPermissions || [])
+      .map((sp) => {
+        if (sp.scopeType === 'ALL_ASSIGNED_BRANCHES') return sp;
+        const validBranches = sp.branchIds.filter((b) => cleanBranches.some((cb) => areBranchesEqual(cb, b)));
+        return {
+          ...sp,
+          branchIds: validBranches,
+        };
+      })
+      .filter((sp) => sp.scopeType === 'ALL_ASSIGNED_BRANCHES' || sp.branchIds.length > 0);
+
+    const updatedUser: UserRecord = {
+      ...existing,
+      assignedBranches: cleanBranches,
+      scopedPermissions: updatedScopedPermissions,
+      updatedAt: now,
+    };
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const userDocRef = doc(db, 'users', uid);
+        await updateDoc(userDocRef, {
+          assignedBranches: cleanBranches,
+          scopedPermissions: updatedScopedPermissions,
+          updatedAt: now,
+        });
+      } catch (err: any) {
+        console.warn('Firestore branch assignment update warning:', err);
+      }
+    }
+
+    const localUsers = getLocalUsers();
+    const idx = localUsers.findIndex((u) => u.uid === uid);
+    if (idx !== -1) {
+      localUsers[idx] = updatedUser;
+      saveLocalUsers(localUsers);
+    }
+
+    await auditService.logAction({
+      actorUid: actor.uid,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: 'UPDATE_USER',
+      entityType: existing.role,
+      entityId: existing.uid,
+      changes: `Updated assigned branches for ${existing.name} (${existing.role}): [${cleanBranches.join(', ')}]`,
+    });
+
+    return { success: true, user: updatedUser };
+  }
+
+  /**
+   * Assign, update, or revoke branch-scoped permissions for SUB_ADMIN, FACULTY, or STAFF.
+   * Enforces delegation limits if grantor is not MAIN_ADMIN.
+   * Automatically synchronizes legacy permissions array for zero backward incompatibility.
+   */
+  async updateUserScopedPermissions(
+    uid: string,
+    scopedPermissions: ScopedPermission[],
+    actor: ActorContext
+  ): Promise<{ success: boolean; user?: UserRecord; error?: string }> {
+    const existing = await this.getUserById(uid);
+    if (!existing) {
+      return { success: false, error: 'User record not found.' };
+    }
+    if (existing.role === 'MAIN_ADMIN') {
+      return { success: false, error: 'Main Administrator permissions cannot be modified.' };
+    }
+    if (existing.role === 'STUDENT') {
+      return { success: false, error: 'Administrative permissions cannot be granted to students.' };
+    }
+
+    const userAssignedBranches = getUserAssignedBranches(existing);
+
+    // If grantor is not MAIN_ADMIN, enforce delegation limits
+    if (actor.role !== 'MAIN_ADMIN') {
+      const grantor = await this.getUserById(actor.uid);
+      if (!grantor) {
+        return { success: false, error: 'Grantor record not found.' };
+      }
+
+      for (const sp of scopedPermissions) {
+        const targetBranches =
+          sp.scopeType === 'ALL_ASSIGNED_BRANCHES' ? userAssignedBranches : sp.branchIds;
+
+        for (const branch of targetBranches) {
+          const delegationCheck = canUserDelegatePermission(
+            grantor,
+            branch,
+            sp.permissionId,
+            sp.actions
+          );
+          if (!delegationCheck.allowed) {
+            return {
+              success: false,
+              error: delegationCheck.reason || 'Delegated permission exceeds grantor scope.',
+            };
+          }
+        }
+      }
+    }
+
+    // Sanitize scopedPermissions: Prune any branches that the target user is not assigned to
+    const sanitizedPermissions: ScopedPermission[] = [];
+    for (const sp of scopedPermissions) {
+      const cleanActions = Array.from(new Set(sp.actions.map((a) => a.toLowerCase().trim()).filter(Boolean)));
+      if (cleanActions.length === 0) continue;
+
+      if (sp.scopeType === 'ALL_ASSIGNED_BRANCHES') {
+        sanitizedPermissions.push({
+          permissionId: sp.permissionId,
+          actions: cleanActions,
+          scopeType: 'ALL_ASSIGNED_BRANCHES',
+          branchIds: [],
+        });
+      } else {
+        const validBranches = sp.branchIds.filter((b) =>
+          userAssignedBranches.some((ub) => areBranchesEqual(ub, b))
+        );
+        if (validBranches.length > 0) {
+          sanitizedPermissions.push({
+            permissionId: sp.permissionId,
+            actions: cleanActions,
+            scopeType: 'SELECTED_BRANCHES',
+            branchIds: validBranches,
+          });
+        }
+      }
+    }
+
+    // Derive synchronized legacy permissions array for backwards-compatibility
+    const legacyPermissionsSet = new Set<UserPermission>();
+    for (const sp of sanitizedPermissions) {
+      const def = findPermissionDefinition(sp.permissionId);
+      if (def) {
+        legacyPermissionsSet.add(def.id);
+      }
+    }
+    const legacyPermissions = Array.from(legacyPermissionsSet);
+
+    const now = new Date().toISOString();
+    const updatedUser: UserRecord = {
+      ...existing,
+      scopedPermissions: sanitizedPermissions,
+      permissions: legacyPermissions,
+      updatedAt: now,
+    };
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const userDocRef = doc(db, 'users', uid);
+        await updateDoc(userDocRef, {
+          scopedPermissions: sanitizedPermissions,
+          permissions: legacyPermissions,
+          updatedAt: now,
+        });
+      } catch (err: any) {
+        console.warn('Firestore scoped permissions update warning:', err);
+      }
+    }
+
+    const localUsers = getLocalUsers();
+    const idx = localUsers.findIndex((u) => u.uid === uid);
+    if (idx !== -1) {
+      localUsers[idx] = updatedUser;
+      saveLocalUsers(localUsers);
+    }
+
+    await auditService.logAction({
+      actorUid: actor.uid,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: 'ASSIGN_PERMISSION',
+      entityType: existing.role,
+      entityId: existing.uid,
+      changes: `Updated branch-scoped permissions for ${existing.name} (${existing.role}): [${sanitizedPermissions.map((p) => `${p.permissionId}(${p.scopeType}:${p.actions.join('+')})`).join(', ')}]`,
+    });
+
+    return { success: true, user: updatedUser };
   }
 
   /**
