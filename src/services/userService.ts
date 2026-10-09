@@ -9,7 +9,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../firebase/config';
-import { getLocalUsers, saveLocalUsers } from '../firebase/authService';
+import { getLocalUsers, saveLocalUsers, safeStorage } from '../firebase/authService';
 import { auditService } from './auditService';
 import { requestService } from './requestService';
 import { complaintService } from './complaintService';
@@ -490,8 +490,8 @@ class UserService {
       ...userData,
       uid,
       isActive: true,
-      isActivated: false,
-      emailVerified: false,
+      isActivated: (userData as any).isActivated ?? false,
+      emailVerified: (userData as any).emailVerified ?? false,
       createdAt: now,
       updatedAt: now,
     };
@@ -611,6 +611,66 @@ class UserService {
       entityType: existing.role,
       entityId: existing.studentId || existing.employeeId || existing.uid,
       changes: `Updated administrative fields for ${existing.name}: [${changedKeys}]`,
+    });
+
+    return { success: true, user: updatedUser };
+  }
+
+  /**
+   * Directly configure user login credentials and activate status (MAIN_ADMIN only)
+   */
+  async setUserCredentials(
+    uid: string,
+    password: string,
+    actor: ActorContext
+  ): Promise<{ success: boolean; user?: UserRecord; error?: string }> {
+    if (actor.role !== 'MAIN_ADMIN') {
+      return { success: false, error: 'Only MAIN_ADMIN can directly assign credentials.' };
+    }
+    const existing = await this.getUserById(uid);
+    if (!existing) {
+      return { success: false, error: 'User record not found.' };
+    }
+
+    safeStorage.setItem(`campus_life_pwd_${existing.email.toLowerCase()}`, password);
+    safeStorage.setItem(`campus_life_verification_${existing.email.toLowerCase()}`, 'VERIFIED');
+
+    const updatedUser: UserRecord = {
+      ...existing,
+      isActivated: true,
+      emailVerified: true,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const userDocRef = doc(db, 'users', existing.uid);
+        await setDoc(userDocRef, updatedUser, { merge: true });
+      } catch (err: any) {
+        console.warn('Firestore setUserCredentials warning:', err);
+      }
+    }
+
+    const localUsers = getLocalUsers();
+    const idx = localUsers.findIndex(
+      (u) => u.uid === existing.uid || u.email.toLowerCase() === existing.email.toLowerCase()
+    );
+    if (idx !== -1) {
+      localUsers[idx] = updatedUser;
+    } else {
+      localUsers.unshift(updatedUser);
+    }
+    saveLocalUsers(localUsers);
+    this.invalidateUsersCache();
+
+    await auditService.logAction({
+      actorUid: actor.uid,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: 'UPDATE_USER',
+      entityType: existing.role,
+      entityId: existing.employeeId || existing.uid,
+      changes: `Directly configured login credentials & activated access for ${existing.name} (${existing.email}).`,
     });
 
     return { success: true, user: updatedUser };

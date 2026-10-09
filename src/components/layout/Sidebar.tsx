@@ -149,6 +149,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ],
     },
     {
+      title: 'Administration',
+      items: [
+        { label: 'Student Management', to: '/admin/students', icon: <Users size={18} />, permission: 'MANAGE_STUDENTS' },
+        { label: 'Faculty & Staff', to: '/admin/faculty', icon: <UserCheck size={18} />, permission: 'MANAGE_FACULTY' },
+        { label: 'Sub-Admins & Roles', to: '/admin/sub-admins', icon: <ShieldAlert size={18} />, permission: 'MANAGE_SUB_ADMINS' },
+        { label: 'Operational Analytics', to: '/admin/reports', icon: <BarChart3 size={18} />, permission: 'VIEW_REPORTS' },
+        { label: 'Audit Trail Logs', to: '/admin/audit-logs', icon: <History size={18} />, permission: 'VIEW_AUDIT_LOGS' },
+      ],
+    },
+    {
       title: 'Academics & Life',
       items: [
         { label: 'Attendance', to: '/student/attendance', icon: <CalendarCheck size={18} /> },
@@ -166,16 +176,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { label: 'Lost & Found', to: '/lost-found', icon: <PackageSearch size={18} /> },
         { label: 'Campus Polls', to: '/polls', icon: <Vote size={18} /> },
         { label: 'Help Center & FAQ', to: '/help', icon: <HelpCircle size={18} /> },
-      ],
-    },
-    {
-      title: 'Administration',
-      items: [
-        { label: 'Student Management', to: '/admin/students', icon: <Users size={18} />, permission: 'MANAGE_STUDENTS' },
-        { label: 'Faculty & Staff', to: '/admin/faculty', icon: <UserCheck size={18} />, permission: 'MANAGE_FACULTY' },
-        { label: 'Sub-Admins & Roles', to: '/admin/sub-admins', icon: <ShieldAlert size={18} />, permission: 'MANAGE_SUB_ADMINS' },
-        { label: 'Operational Analytics', to: '/admin/reports', icon: <BarChart3 size={18} />, permission: 'VIEW_REPORTS' },
-        { label: 'Audit Trail Logs', to: '/admin/audit-logs', icon: <History size={18} />, permission: 'VIEW_AUDIT_LOGS' },
       ],
     },
   ];

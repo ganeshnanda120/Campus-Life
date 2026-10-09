@@ -144,7 +144,7 @@ export const ActivatePage: React.FC = () => {
           setStep('email_verification');
           setResendCooldown(30);
         }
-      } catch (err) {
+      } catch {
         if (!isMounted) return;
         setIsLoading(false);
         setError('Failed to verify account authorization.');

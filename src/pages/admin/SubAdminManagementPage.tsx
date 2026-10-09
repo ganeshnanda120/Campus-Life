@@ -11,7 +11,10 @@ import {
   Key,
   Shield,
   Settings2,
+  Lock,
+  EyeOff,
 } from 'lucide-react';
+import { safeStorage } from '../../firebase/authService';
 import { StatCard, Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
@@ -52,6 +55,10 @@ export const SubAdminManagementPage: React.FC = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeactivateModalOpen, setIsDeactivateModalOpen] = useState(false);
   const [isReactivateModalOpen, setIsReactivateModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [newSubAdminPassword, setNewSubAdminPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showInitialPassword, setShowInitialPassword] = useState(false);
 
   const [selectedAdmin, setSelectedAdmin] = useState<UserRecord | null>(null);
   const [selectedPermissions, setSelectedPermissions] = useState<UserPermission[]>([]);
@@ -112,6 +119,7 @@ export const SubAdminManagementPage: React.FC = () => {
   const initialFormData = {
     name: '',
     email: '',
+    initialPassword: '',
     department: 'Hostel Operations',
     designation: 'Hostel Warden',
     phone: '',
@@ -161,6 +169,7 @@ export const SubAdminManagementPage: React.FC = () => {
     setFormData({
       name: admin.name || '',
       email: admin.email || '',
+      initialPassword: '',
       department: admin.department || '',
       designation: admin.designation || '',
       phone: admin.phone || '',
@@ -228,6 +237,12 @@ export const SubAdminManagementPage: React.FC = () => {
         role: role || 'MAIN_ADMIN',
       };
 
+      const hasInitPwd = Boolean(formData.initialPassword && formData.initialPassword.trim());
+      if (hasInitPwd) {
+        safeStorage.setItem(`campus_life_pwd_${formData.email.trim().toLowerCase()}`, formData.initialPassword.trim());
+        safeStorage.setItem(`campus_life_verification_${formData.email.trim().toLowerCase()}`, 'VERIFIED');
+      }
+
       const res = await userService.createUser(
         {
           role: 'SUB_ADMIN',
@@ -240,6 +255,7 @@ export const SubAdminManagementPage: React.FC = () => {
           assignedBranches: formData.assignedBranches || [],
           permissions: selectedPermissions,
           customFields: formData.customFields || {},
+          ...(hasInitPwd ? { isActivated: true, emailVerified: true } : {}),
         },
         actor
       );
@@ -251,11 +267,60 @@ export const SubAdminManagementPage: React.FC = () => {
       }
 
       setIsAddModalOpen(false);
-      setToastMessage(`Sub-Admin record created for ${formData.name}.`);
+      setToastMessage(
+        hasInitPwd
+          ? `Sub-Admin created with login password for ${formData.name}. They can log in immediately.`
+          : `Sub-Admin record created for ${formData.name}.`
+      );
       setTimeout(() => setToastMessage(null), 5000);
       loadSubAdmins();
     } catch (err: any) {
       setModalError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Open Password Modal
+  const handleOpenPasswordModal = (admin: UserRecord) => {
+    setSelectedAdmin(admin);
+    setNewSubAdminPassword('');
+    setShowNewPassword(false);
+    setModalError(null);
+    setIsPasswordModalOpen(true);
+  };
+
+  // Submit Save Password
+  const handleSavePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAdmin) return;
+    if (!newSubAdminPassword || newSubAdminPassword.trim().length < 6) {
+      setModalError('Password must be at least 6 characters.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const actor = {
+        uid: userProfile?.uid || 'admin',
+        name: userProfile?.name || 'Administrator',
+        role: role || 'MAIN_ADMIN',
+      };
+      const res = await userService.setUserCredentials(
+        selectedAdmin.uid,
+        newSubAdminPassword.trim(),
+        actor
+      );
+      if (res.success) {
+        setIsPasswordModalOpen(false);
+        setNewSubAdminPassword('');
+        setToastMessage(`Login password updated for ${selectedAdmin.name}. They can now sign in immediately.`);
+        setTimeout(() => setToastMessage(null), 6000);
+        loadSubAdmins();
+      } else {
+        setModalError(res.error || 'Failed to update login credentials.');
+      }
+    } catch (err: any) {
+      setModalError(err.message || 'Failed to update password.');
     } finally {
       setIsSubmitting(false);
     }
@@ -607,6 +672,15 @@ export const SubAdminManagementPage: React.FC = () => {
                           <Button
                             variant="outline"
                             size="sm"
+                            leftIcon={<Lock size={14} />}
+                            title="Set or reset login password for this Sub-Admin"
+                            onClick={() => handleOpenPasswordModal(admin)}
+                          >
+                            Password
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
                             leftIcon={<Key size={14} />}
                             onClick={() => handleOpenPermissions(admin)}
                           >
@@ -736,6 +810,9 @@ export const SubAdminManagementPage: React.FC = () => {
                       flexWrap: 'wrap',
                     }}
                   >
+                    <Button variant="outline" size="sm" leftIcon={<Lock size={14} />} onClick={() => handleOpenPasswordModal(admin)}>
+                      Password
+                    </Button>
                     <Button variant="primary" size="sm" leftIcon={<Key size={14} />} onClick={() => handleOpenPermissions(admin)}>
                       Permissions
                     </Button>
@@ -933,6 +1010,43 @@ export const SubAdminManagementPage: React.FC = () => {
                 />
               </div>
             )}
+
+            <div>
+              <label className="input-label" htmlFor="sub-init-pwd">
+                Initial Login Password (Optional)
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  id="sub-init-pwd"
+                  type={showInitialPassword ? 'text' : 'password'}
+                  className="input-field"
+                  placeholder="Set initial password (e.g. Admin@2026)"
+                  value={formData.initialPassword}
+                  onChange={(e) => setFormData({ ...formData, initialPassword: e.target.value })}
+                  style={{ paddingRight: '2.5rem' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowInitialPassword(!showInitialPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '0.65rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--color-text-muted)',
+                  }}
+                  aria-label={showInitialPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showInitialPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', display: 'block', marginTop: '0.2rem' }}>
+                Allows the Sub-Admin to sign in immediately on the login page without waiting for email link verification.
+              </span>
+            </div>
           </div>
 
           {/* Assigned Branches Section */}
@@ -1351,6 +1465,88 @@ export const SubAdminManagementPage: React.FC = () => {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Set / Reset Login Password Modal */}
+      <Modal
+        isOpen={isPasswordModalOpen}
+        onClose={() => {
+          setIsPasswordModalOpen(false);
+          setSelectedAdmin(null);
+          setNewSubAdminPassword('');
+        }}
+        title={`Set Login Password for ${selectedAdmin?.name || 'Sub-Admin'}`}
+        size="normal"
+      >
+        <form onSubmit={handleSavePassword} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {modalError && (
+            <Alert variant="danger" title="Error">
+              {modalError}
+            </Alert>
+          )}
+
+          <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', backgroundColor: 'var(--color-bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
+            Configuring a password for <strong>{selectedAdmin?.email}</strong> marks their account active and ready for instant login on the portal.
+          </div>
+
+          <div>
+            <label className="input-label" htmlFor="sub-new-pwd">
+              New Login Password *
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                id="sub-new-pwd"
+                type={showNewPassword ? 'text' : 'password'}
+                required
+                minLength={6}
+                className="input-field"
+                placeholder="Enter password (min 6 characters)"
+                value={newSubAdminPassword}
+                onChange={(e) => setNewSubAdminPassword(e.target.value)}
+                style={{ paddingRight: '2.5rem' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '0.65rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--color-text-muted)',
+                }}
+                aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+              >
+                {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsPasswordModalOpen(false);
+                setSelectedAdmin(null);
+                setNewSubAdminPassword('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={isSubmitting || !newSubAdminPassword.trim()}
+              leftIcon={<Lock size={15} />}
+            >
+              {isSubmitting ? 'Saving Password...' : 'Save & Activate Login'}
+            </Button>
+          </div>
+        </form>
       </Modal>
 
       {/* Form Field Configuration Modal */}

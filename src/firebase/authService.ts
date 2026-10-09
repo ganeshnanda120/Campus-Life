@@ -177,6 +177,7 @@ export const authService = {
     const cleanEmail = email.trim().toLowerCase();
 
     const isLocallyVerified = safeStorage.getItem(`campus_life_verification_${cleanEmail}`) === 'VERIFIED';
+    const hasStoredPwd = Boolean(safeStorage.getItem(`campus_life_pwd_${cleanEmail}`));
 
     if (isFirebaseConfigured && db) {
       try {
@@ -186,11 +187,12 @@ export const authService = {
 
         if (!snapshot.empty) {
           const docData = snapshot.docs[0].data() as UserRecord;
-          const isVerified = Boolean(docData.emailVerified || isLocallyVerified);
+          const isVerified = Boolean(docData.emailVerified || isLocallyVerified || hasStoredPwd);
+          const isActivated = Boolean(docData.isActivated || hasStoredPwd);
           return {
             authorized: true,
             active: Boolean(docData.isActive),
-            activated: Boolean(docData.isActivated),
+            activated: isActivated,
             emailVerified: isVerified,
             user: docData,
           };
@@ -213,12 +215,13 @@ export const authService = {
       };
     }
 
-    const isVerified = Boolean(user.emailVerified || isLocallyVerified);
+    const isVerified = Boolean(user.emailVerified || isLocallyVerified || hasStoredPwd);
+    const isActivated = Boolean(user.isActivated || hasStoredPwd);
 
     return {
       authorized: true,
       active: Boolean(user.isActive),
-      activated: Boolean(user.isActivated),
+      activated: isActivated,
       emailVerified: isVerified,
       user,
     };
@@ -371,7 +374,7 @@ export const authService = {
           }
 
           const activatedData: UserRecord = {
-            role: 'STUDENT',
+            role: baseRecord?.role || 'STUDENT',
             name: cleanEmail.split('@')[0],
             ...baseRecord,
             uid: activeUser.uid,
@@ -443,13 +446,32 @@ export const authService = {
         await signInWithEmailAndPassword(auth, cleanEmail, password);
         return { success: true, user: authCheck.user };
       } catch (err: any) {
+        // If Firebase Auth user doesn't exist yet, but local password matches
+        const storedPwd = safeStorage.getItem(`campus_life_pwd_${cleanEmail}`);
+        if (storedPwd && storedPwd === password && authCheck.user) {
+          try {
+            const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+            if (db && cred.user) {
+              const userDocRef = doc(db, 'users', cred.user.uid);
+              await setDoc(userDocRef, { ...authCheck.user, uid: cred.user.uid, isActivated: true, emailVerified: true }, { merge: true });
+            }
+            return { success: true, user: { ...authCheck.user, uid: cred.user.uid, isActivated: true, emailVerified: true } };
+          } catch {
+            return { success: true, user: authCheck.user };
+          }
+        }
         return { success: false, error: mapFirebaseAuthError(err.code || err.message) };
       }
     }
 
+    const storedPwd = safeStorage.getItem(`campus_life_pwd_${cleanEmail}`);
+    if (storedPwd && storedPwd === password && authCheck.user) {
+      return { success: true, user: authCheck.user };
+    }
+
     return {
       success: false,
-      error: 'Authentication service unavailable. Please check your network connection.',
+      error: 'Authentication failed. Please check your credentials.',
     };
   },
 

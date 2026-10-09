@@ -182,7 +182,7 @@ export const MakeAttendanceModal: React.FC<MakeAttendanceModalProps> = ({
           }))
         );
       }
-    } catch (err: any) {
+    } catch {
       setErrorMsg('Failed to load attendance session details.');
     } finally {
       setIsLoadingStudents(false);

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '../firebase/config';
 import { authService, getLocalUsers, type EmailCheckResult } from '../firebase/authService';
 import { AuthContext } from './AuthContextDefinition';
@@ -42,6 +42,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const check = await authService.checkEmailAuthorization(email);
     if (check.authorized && check.active && check.user) {
+      if (isFirebaseConfigured && db && uid && check.user.uid !== uid) {
+        try {
+          const userDocRef = doc(db, 'users', uid);
+          await setDoc(userDocRef, { ...check.user, uid }, { merge: true });
+        } catch {
+          // ignore
+        }
+      }
       return check.user;
     }
     return null;
@@ -66,7 +74,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } else {
         setCurrentUser(null);
-        setUserProfile(null);
+        const wasExplicitLogout = sessionStorage.getItem('campus_life_logged_out') === 'true';
+        if (wasExplicitLogout) {
+          setUserProfile(null);
+        } else {
+          const savedSession = sessionStorage.getItem('campus_life_session');
+          if (savedSession) {
+            try {
+              const parsed = JSON.parse(savedSession) as UserRecord;
+              if (parsed && parsed.isActive) {
+                setUserProfile(parsed);
+                setIsLoading(false);
+                return;
+              }
+            } catch {
+              // ignore
+            }
+          }
+          setUserProfile(null);
+        }
       }
       setIsLoading(false);
     });
