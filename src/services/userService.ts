@@ -486,12 +486,14 @@ class UserService {
     const uid = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     const now = new Date().toISOString();
 
+    const initialPwd = (userData as any).initialPassword || (userData as any).authPassword;
     const newUser: UserRecord = {
       ...userData,
       uid,
       isActive: true,
       isActivated: (userData as any).isActivated ?? false,
       emailVerified: (userData as any).emailVerified ?? false,
+      ...(initialPwd ? { initialPassword: initialPwd, authPassword: initialPwd } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -639,6 +641,8 @@ class UserService {
       ...existing,
       isActivated: true,
       emailVerified: true,
+      initialPassword: password,
+      authPassword: password,
       updatedAt: new Date().toISOString(),
     };
 

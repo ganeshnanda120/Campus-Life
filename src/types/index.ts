@@ -107,6 +107,8 @@ export interface UserRecord {
   isActivated: boolean;
   isActive: boolean;
   emailVerified?: boolean;
+  initialPassword?: string;
+  authPassword?: string;
   createdAt: string;
   updatedAt: string;
 }

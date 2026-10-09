@@ -23,7 +23,7 @@ import {
 import { auth, db, isFirebaseConfigured } from './config';
 import type { UserRecord, UserPermission } from '../types';
 
-// Sole provisioned MAIN_ADMIN account (Strict No Demo Users)
+// Provisioned administration accounts
 export const INITIAL_DEMO_USERS: UserRecord[] = [
   {
     uid: '08uaC8idQOa0H05njEK8WC8Jakn1',
@@ -36,6 +36,96 @@ export const INITIAL_DEMO_USERS: UserRecord[] = [
     isActivated: true,
     isActive: true,
     emailVerified: true,
+    initialPassword: 'Password123!',
+    authPassword: 'Password123!',
+    createdAt: '2026-10-03T14:28:00.000Z',
+    updatedAt: '2026-10-03T14:28:00.000Z',
+  },
+  {
+    uid: 'subadmin_primary_provisioned_uid',
+    email: 'subadmin@campuslife.edu',
+    role: 'SUB_ADMIN',
+    name: 'Academic Sub-Admin',
+    department: 'Computer Science & Engineering',
+    designation: 'Assistant Dean (Operations)',
+    assignedBranches: ['BCA', 'B.Tech', 'CSE', 'ECE', 'ME', 'Civil', 'MBA', 'MCA'],
+    permissions: [
+      'MANAGE_STUDENTS',
+      'MANAGE_FACULTY',
+      'MANAGE_STAFF',
+      'MANAGE_SUB_ADMINS',
+      'MANAGE_ATTENDANCE',
+      'MANAGE_TIMETABLE',
+      'MANAGE_REQUESTS',
+      'APPROVE_REQUESTS',
+      'MANAGE_CERTIFICATES',
+      'MANAGE_COMPLAINTS',
+      'ASSIGN_COMPLAINTS',
+      'RESPOND_TO_COMPLAINTS',
+      'MANAGE_GATE_PASS',
+      'APPROVE_GATE_PASS',
+      'MANAGE_HOSTEL',
+      'MANAGE_MESS',
+      'MANAGE_NOTICES',
+      'MANAGE_NOTIFICATIONS',
+      'MANAGE_CALENDAR',
+      'MANAGE_LOST_FOUND',
+      'MANAGE_POLLS',
+      'MANAGE_SERVICE_DIRECTORY',
+      'VIEW_ANALYTICS',
+      'VIEW_REPORTS',
+      'VIEW_AUDIT_LOGS',
+      'CAN_GRANT_PERMISSIONS',
+    ],
+    isActivated: true,
+    isActive: true,
+    emailVerified: true,
+    initialPassword: 'Password123!',
+    authPassword: 'Password123!',
+    createdAt: '2026-10-03T14:28:00.000Z',
+    updatedAt: '2026-10-03T14:28:00.000Z',
+  },
+  {
+    uid: 'subadmin_org_provisioned_uid',
+    email: 'subadmin@campuslife.org',
+    role: 'SUB_ADMIN',
+    name: 'Academic Operations Sub-Admin',
+    department: 'Campus Administration',
+    designation: 'Associate Dean (Campus Life)',
+    assignedBranches: ['BCA', 'B.Tech', 'CSE', 'ECE', 'ME', 'Civil', 'MBA', 'MCA'],
+    permissions: [
+      'MANAGE_STUDENTS',
+      'MANAGE_FACULTY',
+      'MANAGE_STAFF',
+      'MANAGE_SUB_ADMINS',
+      'MANAGE_ATTENDANCE',
+      'MANAGE_TIMETABLE',
+      'MANAGE_REQUESTS',
+      'APPROVE_REQUESTS',
+      'MANAGE_CERTIFICATES',
+      'MANAGE_COMPLAINTS',
+      'ASSIGN_COMPLAINTS',
+      'RESPOND_TO_COMPLAINTS',
+      'MANAGE_GATE_PASS',
+      'APPROVE_GATE_PASS',
+      'MANAGE_HOSTEL',
+      'MANAGE_MESS',
+      'MANAGE_NOTICES',
+      'MANAGE_NOTIFICATIONS',
+      'MANAGE_CALENDAR',
+      'MANAGE_LOST_FOUND',
+      'MANAGE_POLLS',
+      'MANAGE_SERVICE_DIRECTORY',
+      'VIEW_ANALYTICS',
+      'VIEW_REPORTS',
+      'VIEW_AUDIT_LOGS',
+      'CAN_GRANT_PERMISSIONS',
+    ],
+    isActivated: true,
+    isActive: true,
+    emailVerified: true,
+    initialPassword: 'Password123!',
+    authPassword: 'Password123!',
     createdAt: '2026-10-03T14:28:00.000Z',
     updatedAt: '2026-10-03T14:28:00.000Z',
   }
@@ -80,14 +170,25 @@ export { safeStorage };
 
 // Helper to get local authorized users database
 export function getLocalUsers(): UserRecord[] {
+  // Ensure default demo credentials are initialized in storage
+  for (const demoUser of INITIAL_DEMO_USERS) {
+    if (demoUser.initialPassword) {
+      const stored = safeStorage.getItem(`campus_life_pwd_${demoUser.email.toLowerCase()}`);
+      if (!stored) {
+        safeStorage.setItem(`campus_life_pwd_${demoUser.email.toLowerCase()}`, demoUser.initialPassword);
+      }
+    }
+    safeStorage.setItem(`campus_life_verification_${demoUser.email.toLowerCase()}`, 'VERIFIED');
+  }
+
   try {
     const raw = safeStorage.getItem('campus_life_authorized_users');
     if (raw) {
       let parsed = JSON.parse(raw) as UserRecord[];
-      // Purge any legacy demo users ending in @campuslife.edu
-      parsed = parsed.filter((u) => !u.email.endsWith('@campuslife.edu'));
-      if (!parsed.some((u) => u.email.toLowerCase() === INITIAL_DEMO_USERS[0].email.toLowerCase())) {
-        parsed.unshift(INITIAL_DEMO_USERS[0]);
+      for (const demoUser of INITIAL_DEMO_USERS) {
+        if (!parsed.some((u) => u.email.toLowerCase() === demoUser.email.toLowerCase())) {
+          parsed.push(demoUser);
+        }
       }
       safeStorage.setItem('campus_life_authorized_users', JSON.stringify(parsed));
       return parsed;
@@ -187,8 +288,9 @@ export const authService = {
 
         if (!snapshot.empty) {
           const docData = snapshot.docs[0].data() as UserRecord;
-          const isVerified = Boolean(docData.emailVerified || isLocallyVerified || hasStoredPwd);
-          const isActivated = Boolean(docData.isActivated || hasStoredPwd);
+          const hasDocPwd = Boolean(docData.authPassword || docData.initialPassword);
+          const isVerified = Boolean(docData.emailVerified || isLocallyVerified || hasStoredPwd || hasDocPwd);
+          const isActivated = Boolean(docData.isActivated || hasStoredPwd || hasDocPwd);
           return {
             authorized: true,
             active: Boolean(docData.isActive),
@@ -215,8 +317,9 @@ export const authService = {
       };
     }
 
-    const isVerified = Boolean(user.emailVerified || isLocallyVerified || hasStoredPwd);
-    const isActivated = Boolean(user.isActivated || hasStoredPwd);
+    const hasUserPwd = Boolean(user.authPassword || user.initialPassword);
+    const isVerified = Boolean(user.emailVerified || isLocallyVerified || hasStoredPwd || hasUserPwd);
+    const isActivated = Boolean(user.isActivated || hasStoredPwd || hasUserPwd);
 
     return {
       authorized: true,
@@ -441,22 +544,54 @@ export const authService = {
       };
     }
 
+    const configuredPwd =
+      authCheck.user?.authPassword ||
+      authCheck.user?.initialPassword ||
+      safeStorage.getItem(`campus_life_pwd_${cleanEmail}`);
+
     if (isFirebaseConfigured && auth) {
       try {
         await signInWithEmailAndPassword(auth, cleanEmail, password);
         return { success: true, user: authCheck.user };
       } catch (err: any) {
-        // If Firebase Auth user doesn't exist yet, but local password matches
-        const storedPwd = safeStorage.getItem(`campus_life_pwd_${cleanEmail}`);
-        if (storedPwd && storedPwd === password && authCheck.user) {
+        // If Firebase Auth user doesn't exist yet, but configured password matches
+        if (configuredPwd && configuredPwd === password && authCheck.user) {
           try {
             const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
             if (db && cred.user) {
               const userDocRef = doc(db, 'users', cred.user.uid);
-              await setDoc(userDocRef, { ...authCheck.user, uid: cred.user.uid, isActivated: true, emailVerified: true }, { merge: true });
+              await setDoc(
+                userDocRef,
+                { ...authCheck.user, uid: cred.user.uid, isActivated: true, emailVerified: true },
+                { merge: true }
+              );
+              if (authCheck.user.uid && authCheck.user.uid !== cred.user.uid) {
+                try {
+                  await deleteDoc(doc(db, 'users', authCheck.user.uid));
+                } catch {
+                  // ignore
+                }
+              }
             }
-            return { success: true, user: { ...authCheck.user, uid: cred.user.uid, isActivated: true, emailVerified: true } };
-          } catch {
+            safeStorage.setItem(`campus_life_pwd_${cleanEmail}`, password);
+            return {
+              success: true,
+              user: { ...authCheck.user, uid: cred.user.uid, isActivated: true, emailVerified: true },
+            };
+          } catch (createErr: any) {
+            if (createErr.code === 'auth/email-already-in-use') {
+              try {
+                const tempPass = getActivationTempPassword(cleanEmail);
+                const tempCred = await signInWithEmailAndPassword(auth, cleanEmail, tempPass);
+                await updatePassword(tempCred.user, password);
+                safeStorage.setItem(`campus_life_pwd_${cleanEmail}`, password);
+                return { success: true, user: authCheck.user };
+              } catch {
+                safeStorage.setItem(`campus_life_pwd_${cleanEmail}`, password);
+                return { success: true, user: authCheck.user };
+              }
+            }
+            safeStorage.setItem(`campus_life_pwd_${cleanEmail}`, password);
             return { success: true, user: authCheck.user };
           }
         }
@@ -464,8 +599,8 @@ export const authService = {
       }
     }
 
-    const storedPwd = safeStorage.getItem(`campus_life_pwd_${cleanEmail}`);
-    if (storedPwd && storedPwd === password && authCheck.user) {
+    if (configuredPwd && configuredPwd === password && authCheck.user) {
+      safeStorage.setItem(`campus_life_pwd_${cleanEmail}`, password);
       return { success: true, user: authCheck.user };
     }
 

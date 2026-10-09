@@ -155,6 +155,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
+    try {
+      sessionStorage.removeItem('campus_life_logged_out');
+    } catch {
+      // ignore
+    }
     const result = await authService.signInWithEmailPassword(email, password);
     if (result.success && result.user) {
       setUserProfile(result.user);

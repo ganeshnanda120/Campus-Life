@@ -238,8 +238,9 @@ export const SubAdminManagementPage: React.FC = () => {
       };
 
       const hasInitPwd = Boolean(formData.initialPassword && formData.initialPassword.trim());
-      if (hasInitPwd) {
-        safeStorage.setItem(`campus_life_pwd_${formData.email.trim().toLowerCase()}`, formData.initialPassword.trim());
+      const cleanInitPwd = hasInitPwd ? formData.initialPassword.trim() : undefined;
+      if (cleanInitPwd) {
+        safeStorage.setItem(`campus_life_pwd_${formData.email.trim().toLowerCase()}`, cleanInitPwd);
         safeStorage.setItem(`campus_life_verification_${formData.email.trim().toLowerCase()}`, 'VERIFIED');
       }
 
@@ -255,7 +256,14 @@ export const SubAdminManagementPage: React.FC = () => {
           assignedBranches: formData.assignedBranches || [],
           permissions: selectedPermissions,
           customFields: formData.customFields || {},
-          ...(hasInitPwd ? { isActivated: true, emailVerified: true } : {}),
+          ...(cleanInitPwd
+            ? {
+                isActivated: true,
+                emailVerified: true,
+                initialPassword: cleanInitPwd,
+                authPassword: cleanInitPwd,
+              }
+            : {}),
         },
         actor
       );

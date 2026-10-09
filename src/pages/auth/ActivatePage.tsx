@@ -72,12 +72,18 @@ export const ActivatePage: React.FC = () => {
       return;
     }
 
-    // Check if email was already verified previously
+    // Check if email was already verified previously or if user is an authorized administrative role
     setLoadingText('Checking verification status...');
-    const isAlreadyVerified = Boolean(check.emailVerified) || (await checkEmailVerified(clean));
+    const isAlreadyVerified =
+      Boolean(check.emailVerified) ||
+      check.user?.role === 'SUB_ADMIN' ||
+      check.user?.role === 'MAIN_ADMIN' ||
+      check.user?.role === 'FACULTY' ||
+      check.user?.role === 'STAFF' ||
+      (await checkEmailVerified(clean));
 
     if (isAlreadyVerified) {
-      // Skip verification email and move directly to password setup!
+      // Move directly to password setup
       setIsLoading(false);
       setStep('password_setup');
       return;
@@ -125,9 +131,15 @@ export const ActivatePage: React.FC = () => {
           return;
         }
 
-        // Check if user already verified their email previously
+        // Check if user already verified their email previously or is an authorized administrative role
         setLoadingText('Checking verification status...');
-        const isAlreadyVerified = Boolean(check.emailVerified) || (await checkEmailVerified(clean));
+        const isAlreadyVerified =
+          Boolean(check.emailVerified) ||
+          check.user?.role === 'SUB_ADMIN' ||
+          check.user?.role === 'MAIN_ADMIN' ||
+          check.user?.role === 'FACULTY' ||
+          check.user?.role === 'STAFF' ||
+          (await checkEmailVerified(clean));
         if (!isMounted) return;
 
         setIsLoading(false);
